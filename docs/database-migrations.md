@@ -108,3 +108,41 @@ mesma origem para autentica??o; CORS sozinho n?o resolve essa restri??o.
 - https://docs.railway.com/deployments/pre-deploy-command
 - https://docs.railway.com/cli/ssh
 - https://docs.railway.com/cli
+
+
+## Destino expl?cito e diagn?stico da CLI
+
+O projeto de produ??o ? `ctrl-x-api`, ID
+`d8bc085c-a818-413e-8233-3fabff1cde1f`. Configure tamb?m a vari?vel
+`RAILWAY_SERVICE_NAME` no GitHub Environment `production`, com o nome atual
+exato da API no painel Railway. O nome pode mudar; `RAILWAY_SERVICE_ID`
+deve continuar sendo o UUID da API, nunca o UUID do servi?o `MySQL`.
+O script confere o nome e o ID do servi?o e o ID/nome de `production` antes
+que qualquer upload seja feito. O nome do projeto n?o ? o nome do servi?o.
+
+A CLI permanece fixada em 5.74.0. O fluxo usa `railway status --project ...
+--environment ... --json`, seguido de `railway up --project ... --service ...
+--environment ... --detach --json`. O acompanhamento tamb?m informa o projeto.
+N?o executa `railway link`, `whoami` ou login interativo.
+
+`RAILWAY_TOKEN` deve conter um Project Token emitido para esse projeto e
+ambiente production. Tokens de conta/workspace usam `RAILWAY_API_TOKEN` e
+n?o devem ser colocados nesse secret. O workflow injeta o secret no ambiente
+do Python; os subprocessos herdam o ambiente, sem token nos argumentos.
+A exist?ncia/formato do valor n?o comprova seu tipo: a autentica??o real ?
+verificada pela consulta de status antes do upload. Nunca publique o valor
+para diagnosticar. Nenhum token remoto foi inspecionado nesta corre??o.
+
+`railway link` consulta workspaces/identidade do usu?rio, o que pode falhar
+com Project Tokens. O erro antigo ocultava stdout e stderr, portanto seu
+exit code isolado n?o comprova a causa remota. Agora erros mostram apenas
+linhas de diagn?stico filtradas, limitadas e com segredos/URLs removidos.
+
+Sequ?ncia efetiva: CI ? upload/build ? Database Migrations (pre-deploy hook)
+? ativa??o da API ? healthcheck. N?o h? job GitHub separado de migrations:
+a imagem nova ? necess?ria para executar as migrations novas. Falha do hook
+impede ativa??o e o script rejeita qualquer status terminal diferente de SUCCESS.
+N?o executar o uploader legado de migrations no servi?o da API.
+
+Refer?ncias: https://docs.railway.com/cli e
+https://docs.railway.com/deployments/pre-deploy-command.

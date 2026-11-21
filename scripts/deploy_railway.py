@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 UUID = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
+PRODUCTION_PROJECT_ID = "d8bc085c-a818-413e-8233-3fabff1cde1f"
 PENDING = {"INITIALIZING", "QUEUED", "WAITING", "BUILDING", "DEPLOYING"}
 
 
@@ -31,26 +32,98 @@ def validate_release_config():
         raise ValueError("Release must include the controlled migration and healthcheck configuration")
 
 
-def verify_api_target(project: str, service: str, environment: str,
-                      expected_name: str = "ctrl-x-api"):
-    metadata = json.loads(railway("status", "--project", project,
-                                  "--environment", environment, "--json"))
-    services = [edge["node"] for edge in metadata["services"]["edges"]]
-    environments = [edge["node"] for edge in metadata["environments"]["edges"]]
-    if (metadata["id"] != project
-            or not any(item["id"] == service and item["name"] == expected_name for item in services)
-            or not any(item["id"] == environment and item["name"] == "production"
-                       for item in environments)):
-        raise RuntimeError(f"Refusing deploy outside {expected_name} in the production environment")
+def verify_api_target(
+    project: str,
+    service: str,
+    environment: str,
+    expected_name: str | None = None,
+):
+    if project != PRODUCTION_PROJECT_ID:
+        raise RuntimeError("Refusing deploy outside the production project ID")
+    expected_name = expected_name or os.environ.get("RAILWAY_SERVICE_NAME", "").strip()
+    if not expected_name or expected_name.casefold() == "mysql":
+        raise RuntimeError("Configure RAILWAY_SERVICE_NAME with the current API service name")
+    metadata = json.loads(
+        railway(
+            "status",
+            "--project", project,
+            "--environment", environment,
+            "--json",
+        )
+    )
+
+    services = [
+        edge["node"]
+        for edge in metadata["services"]["edges"]
+    ]
+
+    environments = [
+        edge["node"]
+        for edge in metadata["environments"]["edges"]
+    ]
+
+    if metadata["id"] != project:
+        raise RuntimeError(
+            "Railway project ID does not match RAILWAY_PROJECT_ID"
+        )
+
+    if not any(
+        item["id"] == service and item["name"] == expected_name
+        for item in services
+    ):
+        raise RuntimeError(
+            "Refusing deploy: Railway service ID/name mismatch. "
+            "Verify the configured API service name. "
+            "Check RAILWAY_SERVICE_ID and the Railway service name."
+        )
+
+    if not any(
+        item["id"] == environment and item["name"] == "production"
+        for item in environments
+    ):
+        raise RuntimeError(
+            "Railway environment ID/name mismatch. "
+            "Check RAILWAY_ENVIRONMENT_ID and ensure the "
+            "Railway environment is named production."
+        )
+
+def safe_cli_diagnostics(output: str | None) -> str:
+    """Keep CLI errors useful without printing arbitrary remote payloads."""
+    if not output:
+        return "(empty)"
+    output = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    for name, value in os.environ.items():
+        if value and any(part in name.upper() for part in (
+            "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "DATABASE_URL", "MYSQL_URL",
+        )):
+            output = output.replace(value, "[REDACTED]")
+    output = re.sub(r"(?i)bearer\s+\S+", "Bearer [REDACTED]", output)
+    output = re.sub(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s]+", "[URL REDACTED]", output)
+    lines = []
+    for line in output.splitlines():
+        # Only retain recognizable CLI diagnostics, never JSON or runtime dumps.
+        if not re.search(
+            r"(?i)error|unauthorized|forbidden|not found|invalid|failed|unexpected|usage:", line
+        ):
+            continue
+        if re.search(r"(?i)token|secret|password|credential|authorization|cookie|=", line):
+            lines.append("[Sensitive diagnostic omitted]")
+        else:
+            lines.append(line[:500])
+    return "\n".join(lines)[:2000] or "[Non-diagnostic output omitted]"
 
 
 def railway(*args: str) -> str:
     result = subprocess.run(
-        ["railway", *args], capture_output=True, text=True, timeout=120, check=False
+        ["railway", *args], capture_output=True, text=True, timeout=120, check=False,
+        stdin=subprocess.DEVNULL
     )
     if result.returncode:
-        # Do not dump arbitrary remote output, environment values or runtime logs.
-        raise RuntimeError(f"Railway {args[0]} failed (exit {result.returncode}); inspect dashboard")
+        raise RuntimeError(
+            f"Railway {args[0]} failed (exit {result.returncode})\n"
+            f"stdout: {safe_cli_diagnostics(result.stdout)}\n"
+            f"stderr: {safe_cli_diagnostics(result.stderr)}"
+        )
     return result.stdout
 
 
@@ -62,11 +135,14 @@ def deployment_id_from_upload(output: str) -> str:
     raise RuntimeError("Upload returned no deployment ID; refusing to verify an older deployment")
 
 
-def wait_for_deployment(deployment_id: str, service: str, environment: str) -> None:
+def wait_for_deployment(
+    deployment_id: str, service: str, environment: str,
+    project: str = PRODUCTION_PROJECT_ID,
+) -> None:
     deadline = time.monotonic() + 900
     while time.monotonic() < deadline:
         deployments = json.loads(
-            railway("deployment", "list", "--service", service,
+            railway("deployment", "list", "--project", project, "--service", service,
                     "--environment", environment, "--limit", "100", "--json")
         )
         current = next((item for item in deployments if item["id"] == deployment_id), None)
@@ -103,7 +179,7 @@ def main() -> None:
         raise RuntimeError("Publication is restricted to a GitHub push on prod")
     for name in (
         "RAILWAY_TOKEN", "RAILWAY_PROJECT_ID", "RAILWAY_SERVICE_ID",
-        "RAILWAY_ENVIRONMENT_ID", "BACKEND_PRODUCTION_URL",
+        "RAILWAY_ENVIRONMENT_ID", "RAILWAY_SERVICE_NAME", "BACKEND_PRODUCTION_URL",
     ):
         if not os.environ.get(name):
             raise RuntimeError(f"Missing production configuration: {name}")
@@ -118,13 +194,13 @@ def main() -> None:
     validate_base_url(base_url)
     validate_release_config()
     verify_api_target(project, service, environment)
-    railway("link", "--project", project, "--environment", environment, "--service", service)
     output = railway(
-        "up", "--detach", "--json", "--service", service, "--environment", environment
+        "up", "--detach", "--json", "--project", project,
+        "--service", service, "--environment", environment
     )
     deployment_id = deployment_id_from_upload(output)
     print(f"Uploaded deployment {deployment_id}", flush=True)
-    wait_for_deployment(deployment_id, service, environment)
+    wait_for_deployment(deployment_id, service, environment, project)
     check_health(base_url)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:

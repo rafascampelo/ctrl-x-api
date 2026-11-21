@@ -53,17 +53,19 @@ jobs:
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
           RAILWAY_MIGRATIONS_SERVICE_ID: ${{ vars.RAILWAY_MIGRATIONS_SERVICE_ID }}
           BACKEND_PRODUCTION_URL: ${{ vars.BACKEND_PRODUCTION_URL }}
         run: python -m scripts.release_preflight
       - name: Install pinned Railway CLI
         run: npm install --global @railway/cli@5.74.0
-      - name: Deploy and verify production
+      - name: Migrate, deploy and verify production
         working-directory: release
         env:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
           RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RAILWAY_SERVICE_NAME: ${{ vars.RAILWAY_SERVICE_NAME }}
           RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
           BACKEND_PRODUCTION_URL: ${{ vars.BACKEND_PRODUCTION_URL }}
         run: python -m scripts.deploy_railway
