@@ -3,11 +3,12 @@
 import os
 import re
 
-from scripts.deploy_railway import UUID, validate_base_url
+from scripts.deploy_railway import PRODUCTION_PROJECT_ID, UUID, validate_base_url
 
 REQUIRED = (
     "RAILWAY_TOKEN", "RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_ID",
-    "RAILWAY_SERVICE_ID", "RAILWAY_MIGRATIONS_SERVICE_ID", "BACKEND_PRODUCTION_URL",
+    "RAILWAY_SERVICE_ID", "RAILWAY_SERVICE_NAME", "RAILWAY_MIGRATIONS_SERVICE_ID",
+    "BACKEND_PRODUCTION_URL",
 )
 
 
@@ -22,6 +23,12 @@ def validate_config():
             )
         elif name.endswith("_ID") and not re.fullmatch(UUID, os.environ[name]):
             errors.append(f"{name} must be a UUID copied from Railway.")
+    if os.environ.get("RAILWAY_PROJECT_ID") != PRODUCTION_PROJECT_ID:
+        errors.append("RAILWAY_PROJECT_ID must identify the official production project.")
+    if os.environ.get("RAILWAY_SERVICE_NAME", "").strip().casefold() == "mysql":
+        errors.append("RAILWAY_SERVICE_NAME must identify the API, not MySQL.")
+    if os.environ.get("RAILWAY_API_TOKEN"):
+        errors.append("Use only a project token in RAILWAY_TOKEN for production releases.")
     api = os.environ.get("RAILWAY_SERVICE_ID")
     if api and api != os.environ.get("RAILWAY_MIGRATIONS_SERVICE_ID"):
         errors.append("Migration service must equal API for the single-service pre-deploy flow.")
