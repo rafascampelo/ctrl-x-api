@@ -146,3 +146,40 @@ N?o executar o uploader legado de migrations no servi?o da API.
 
 Refer?ncias: https://docs.railway.com/cli e
 https://docs.railway.com/deployments/pre-deploy-command.
+
+
+## Diagn?stico seguro do startup da API
+
+O startup emite JSON em stderr com `event=api_startup`, `stage` e
+`status=started|passed|failed`. Em falha inclui `error_type`, `code` e
+`variables` (somente nomes, nunca valores ou texto da exce??o).
+Use o primeiro evento `failed` para localizar a origem; etapas externas
+podem registrar a propaga??o da mesma falha.
+
+Etapas: `environment` (APP_ENV), `port` (PORT), `settings` (Pydantic,
+SECRET_KEY e resolu??o do banco), `cors` (CORS_ORIGINS), `database_engine`
+(URL/driver/host/porta/credenciais e cria??o do engine SQLAlchemy),
+`database_connection`, `mysql_version` e `alembic_revision`.
+A consulta de schema continua somente leitura: n?o executa Alembic upgrade.
+Erros de conex?o e revis?o nunca imprimem mensagens de exce??o.
+
+Na API Railway configure APP_ENV=production, SECRET_KEY exclusivo com pelo
+menos 32 caracteres e CORS_ORIGINS com origens HTTPS expl?citas, separadas por
+v?rgula, sem caminhos, credenciais ou barra final. PORT ? fornecido pelo Railway;
+se definido manualmente deve ser inteiro entre 1 e 65535.
+
+Para banco use MYSQLHOST, MYSQLPORT=3306, MYSQLUSER, MYSQLPASSWORD e
+MYSQLDATABASE completos, referenciando o servi?o MySQL privado. Alternativamente,
+DATABASE_URL deve conter usu?rio, senha, host *.railway.internal, porta expl?cita
+3306 e nome do banco; mysql:// ? normalizado para mysql+pymysql://.
+URLs precisam de escaping correto das credenciais. N?o copie a URL para logs.
+DB_* legado tem preced?ncia sobre DATABASE_URL; DATABASE_URL tem preced?ncia
+sobre MYSQL* e MYSQL_URL. Remova grupos legados parciais/obsoletos quando
+pretender usar as refer?ncias MYSQL*. N?o configure CI=true no container.
+
+Um ValueError isolado n?o permite determinar a configura??o remota incorreta.
+Os c?digos production_database_private_host, production_database_port,
+production_database_username, production_database_password,
+production_database_database e production_database_driver distinguem as
+restri??es da URL de produ??o. Erros Pydantic apontam os nomes de campos
+inv?lidos ou o grupo incompleto, sem registrar input, msg ou ctx.
