@@ -6,8 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.models.professional_link import LinkStatus, ProfessionalLink
 from app.models.user import Role, User
-from app.repositories import care
-from app.schemas.care import ProfessionalProfileResponse, ProfileResponse, ProfileUpdate
+from app.repositories import care, crefito_reviews
+from app.schemas.care import (
+    CrefitoReviewResponse,
+    ProfessionalProfileResponse,
+    ProfileResponse,
+    ProfileUpdate,
+)
+from app.services.crefito_reviews import clear_verification, replace_review
 
 
 def own_profile(db: Session, user: User):
@@ -17,23 +23,28 @@ def own_profile(db: Session, user: User):
     return result
 
 
-def profile_response(profile, role: Role):
+def profile_response(profile, role: Role, review=None):
     values = {"id": profile.id, "user_id": profile.user_id,
               "full_name": profile.full_name, "role": role}
     if role == Role.PROFESSIONAL:
         return ProfessionalProfileResponse(
             **values, crefito_region=profile.crefito_region, crefito_number=profile.crefito_number,
             verification_status=profile.verification_status,
+            crefito_review=CrefitoReviewResponse(
+                id=review.id, status="created" if review.result is None else "processed",
+                result=review.result,
+            ) if review is not None else None,
         )
     return ProfileResponse(**values)
 
 
 def read_profile(db: Session, user: User):
     profile = own_profile(db, user)
+    review = crefito_reviews.current_review(db, profile.id) if user.role == Role.PROFESSIONAL else None
     care.audit(db, user, "profile_viewed", profile.id,
                profile.id if user.role == Role.PATIENT else None)
     db.commit()
-    return profile_response(profile, user.role)
+    return profile_response(profile, user.role, review)
 
 
 def update_profile(db: Session, user: User, data: ProfileUpdate):
@@ -46,21 +57,24 @@ def update_profile(db: Session, user: User, data: ProfileUpdate):
             raise HTTPException(422, "Invalid request payload")
         profile.crefito_region = data.crefito_region
         profile.crefito_number = data.crefito_number
-    if user.role == Role.PROFESSIONAL and (
-        fields or profile.full_name != data.full_name
-    ):
-        profile.verification_status = "unverified"
-        profile.verified_at = None
-        profile.verification_reference = None
+    needs_review = user.role == Role.PROFESSIONAL and (
+        bool(fields) or profile.full_name != data.full_name
+    )
+    if needs_review:
+        clear_verification(profile)
     profile.full_name = data.full_name
     care.audit(db, user, "profile_updated", profile.id,
                profile.id if user.role == Role.PATIENT else None)
     try:
+        if needs_review:
+            replace_review(db, profile)
+        review = crefito_reviews.current_review(db, profile.id) if user.role == Role.PROFESSIONAL else None
+        response = profile_response(profile, user.role, review)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Unable to update profile with these details") from None
-    return profile_response(profile, user.role)
+    return response
 
 
 def list_links(db: Session, user: User, cursor: str | None, limit: int):

@@ -35,8 +35,8 @@ tentativas por conta em 300 segundos, com 429 e `Retry-After`.
 Perfil tem `{id, user_id, role, full_name}`. `id` identifica o perfil de paciente
 ou profissional. `user_id` identifica a conta e corresponde a `id` de `/auth/me`.
 Usar o ID de perfil nos parâmetros `patient_id` e `professional_id`.
-O profissional também recebe `crefito_region`, `crefito_number` e
-`verification_status`. Nome e CREFITO são editáveis; status não é entrada.
+O profissional também recebe `crefito_region`, `crefito_number`,
+`verification_status` e `crefito_review`. Nome e CREFITO são editáveis.
 O paciente não pode enviar campos profissionais. Campos adicionais são rejeitados.
 
 Novo cadastro `PROFESSIONAL` exige regional (inteiro 1–22) e número (string de
@@ -55,17 +55,19 @@ regional e número juntos, não nulos. Colisão retorna 409
 Exemplo de resposta profissional, com identificadores fictícios:
 
 ```json
-{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified"}
+{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified","crefito_review":{"id":"00000000-0000-0000-0000-000000000003","status":"created","result":null}}
 ```
 
-Todos os novos profissionais ficam `unverified`; legados têm CREFITO nulo até
-completar perfil e também ficam `unverified`. Sem verificação confiável, aceite e
-leitura profissional de pacientes retornam 403 `Professional verification required`.
-Pedido para alvo não verificado retorna 404 `Professional not found`, assim como
-alvo inexistente. Alterar nome ou CREFITO retira a verificação. Não exibir selo
-por formato válido. Não há rota de verificação nesta entrega; a atuação clínica
-fica bloqueada até implementar revisão confiável. Veja
-[fontes, limitações e alternativa segura](crefito-verification.md).
+`crefito_review` é nulo quando ainda não há solicitação, como em perfis legados.
+`created` com resultado nulo indica conferência pendente. `processed` recebe
+`active`, `cancelled`, `not_found` ou `needs_review`. Exiba `active` como
+“Inscrição ativa no conselho”. Use `verification_status` para indicar a
+verificação do profissional. Esses campos são de leitura.
+
+Novos profissionais começam como `unverified`. Aceite e leitura profissional de
+pacientes exigem verificação e retornam 403 `Professional verification required`
+sem ela. Pedido para alvo não verificado retorna 404 `Professional not found`.
+Alterar nome ou CREFITO retira a verificação. [Fluxo de conferência](crefito-verification.md)
 
 Vínculo tem `{id, patient_id, professional_id, status, created_at, accepted_at,
 revoked_at, closed_at}`. Status `pending`, `active`, `revoked`, `rejected` ou

@@ -1,6 +1,7 @@
 """Register ORM models for Alembic."""
 
 from app.models.auth import AuthEvent, AuthSession, LoginLimit
+from app.models.crefito_review import CrefitoReview
 from app.models.pain_entry import PainEntry
 from app.models.professional_link import CareAuditEvent, LinkStatus, ProfessionalLink
 from app.models.user import Patient, Professional, Role, User
@@ -9,6 +10,7 @@ __all__ = [
     "AuthEvent",
     "AuthSession",
     "CareAuditEvent",
+    "CrefitoReview",
     "LinkStatus",
     "LoginLimit",
     "PainEntry",

@@ -1,8 +1,10 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.models.crefito_review import CrefitoResult
 from app.models.professional_link import LinkStatus
 from app.models.user import Role
 from app.repositories.auth import utc
@@ -42,10 +44,17 @@ class ProfileResponse(BaseModel):
     full_name: str
 
 
+class CrefitoReviewResponse(BaseModel):
+    id: UUID
+    status: Literal["created", "processed"]
+    result: CrefitoResult | None
+
+
 class ProfessionalProfileResponse(ProfileResponse):
     crefito_region: int | None
     crefito_number: str | None
     verification_status: str
+    crefito_review: CrefitoReviewResponse | None
 
 
 class ProfileUpdate(CrefitoFields):
