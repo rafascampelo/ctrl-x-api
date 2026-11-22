@@ -196,6 +196,8 @@ def test_link_validation_and_audit_privacy(client):
 def test_mysql_concurrent_accept_and_database_constraint(client):
     url = os.environ.get('TEST_DATABASE_URL')
     if not url:
+        if os.environ.get('CI') == 'true':
+            pytest.fail('TEST_DATABASE_URL is mandatory in CI')
         pytest.skip('requires real MySQL row locks and generated unique column')
     first = account(client, 'PROFESSIONAL', 'first')
     second = account(client, 'PROFESSIONAL', 'second')
@@ -229,6 +231,8 @@ def test_mysql_concurrent_accept_and_database_constraint(client):
 def test_mysql_concurrent_duplicate_requests(client):
     url = os.environ.get('TEST_DATABASE_URL')
     if not url:
+        if os.environ.get('CI') == 'true':
+            pytest.fail('TEST_DATABASE_URL is mandatory in CI')
         pytest.skip('requires real MySQL row locks')
     professional = account(client, 'PROFESSIONAL', 'professional')
     patient = account(client, 'PATIENT', 'patient')

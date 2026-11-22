@@ -24,6 +24,10 @@ router = APIRouter(prefix="/auth", tags=["auth"], responses={
 })
 
 
+def _cookie_samesite() -> str:
+    return "lax" if get_settings().app_env == "development" else "none"
+
+
 @router.post("/register", response_model=UserResponse, status_code=201,
              dependencies=[Depends(require_trusted_origin)], responses={
                  403: {"model": ErrorResponse, "description": "Missing or untrusted Origin"},
@@ -36,7 +40,7 @@ def register(data: Registration, db: Annotated[Session, Depends(get_db)]):
 @router.post("/login", response_model=UserResponse, dependencies=[Depends(require_trusted_origin)],
              responses={
                  200: {"description": "User and host-only ctrlx_access JWT cookie. "
-                       "HttpOnly; Path=/; Max-Age=900; SameSite=Lax. "
+                       "HttpOnly; Path=/; Max-Age=900; SameSite=None. "
                        "Secure outside development. No refresh token.",
                        "headers": {"Set-Cookie": {"schema": {"type": "string"}},
                                    "Cache-Control": {"schema": {"type": "string"}}}},
@@ -49,7 +53,7 @@ def login(data: Credentials, response: Response, db: Annotated[Session, Depends(
     user = auth.authenticate(db, data)
     response.set_cookie(
         COOKIE_NAME, auth.start_session(db, user), max_age=900, httponly=True,
-        secure=get_settings().app_env != "development", samesite="lax", path="/",
+        secure=get_settings().app_env != "development", samesite=_cookie_samesite(), path="/",
     )
     response.headers["Cache-Control"] = "no-store"
     return user
@@ -89,5 +93,6 @@ def logout(request: Request, db: Annotated[Session, Depends(get_db)]):
     db.commit()
     response = Response(status_code=204, headers={"Cache-Control": "no-store"})
     response.delete_cookie(COOKIE_NAME, path="/", httponly=True,
-                           secure=get_settings().app_env != "development", samesite="lax")
+                           secure=get_settings().app_env != "development",
+                           samesite=_cookie_samesite())
     return response

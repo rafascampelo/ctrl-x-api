@@ -13,8 +13,9 @@ As respostas autenticadas possuem `Cache-Control: no-store`.
 | `GET /auth/me` | Cookie | 200, `{id, email, role}` |
 | `POST /auth/logout` | Cookie e Origin | 204, revoga sessão e remove cookie |
 
-Cookie HttpOnly, host-only, SameSite=Lax, Secure fora de desenvolvimento,
-validade de 900 segundos. Reautenticar após expiração. Login limitado a cinco
+Cookie HttpOnly, host-only, SameSite=None e Secure fora de desenvolvimento;
+development usa SameSite=Lax sem Secure. Validade de 900 segundos.
+Reautenticar após expiração. Login limitado a cinco
 tentativas por conta em 300 segundos, com 429 e `Retry-After`.
 
 ## Perfis e vínculos

@@ -54,9 +54,10 @@ para minúsculas. Campos extras retornam 422.
 
 ### Sessão, cookies e frontend
 
-Login emite `ctrlx_access=<JWT>; HttpOnly; Path=/; Max-Age=900; SameSite=Lax`.
-`Secure` é adicionado em todo ambiente diferente de `development`. Cookie é
-host-only, sem `Domain`. Logout usa os mesmos atributos e `Max-Age=0`, com
+Login emite `ctrlx_access=<JWT>; HttpOnly; Path=/; Max-Age=900; SameSite=None`.
+`Secure` é adicionado em todo ambiente diferente de `development`; o modo
+`development` usa `SameSite=Lax` sem `Secure`. Cookie é host-only, sem `Domain`.
+Logout usa os mesmos atributos e `Max-Age=0`, com
 `Expires` no passado. Login, `/me` e logout retornam `Cache-Control: no-store`.
 JWT HS256 exige `sub`, `jti`, `iat`, `exp`, `iss` e `aud`. Expira após 15 minutos,
 sem refresh ou renovação deslizante. Cada requisição autenticada consulta a
@@ -70,14 +71,14 @@ adiciona `Origin`. Ao receber 401, solicite novo login. Tokens permanecem no
 cookie HttpOnly. CORS permite GET/POST/PATCH e Content-Type com credenciais apenas
 para as origens configuradas, e expõe `Retry-After` ao frontend.
 
-Frontend e API precisam compartilhar o mesmo site e esquema HTTPS em produção,
-por exemplo `https://app.example.com` e `https://api.example.com`. Os domínios
-padrão `*.vercel.app` e `*.railway.app` são cross-site e o cookie Lax será
-bloqueado nesse fluxo. A configuração de domínios de produção está pendente de
-verificação. Em desenvolvimento use `localhost` em ambos os serviços.
+O modo de produção usa `SameSite=None; Secure` para permitir cookies entre os
+domínios padrão `*.vercel.app` e `*.railway.app`. CORS com credenciais e a
+validação estrita de Origin nas mutações continuam obrigatórios. Se o navegador
+bloquear cookies de terceiros, use domínios próprios no mesmo site ou um proxy
+de mesma origem. Em desenvolvimento use `localhost` em ambos os serviços.
 
 A proteção CSRF combina validação estrita de Origin nas mutações de
-autenticação, SameSite=Lax e CORS explícito. A dependência `current_user`
+autenticação, SameSite e CORS explícito. A dependência `current_user`
 também exige Origin em métodos mutáveis. Referências da revisão de segurança
 estão na [OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html)
 e na [MDN](https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API/Using_Fetch).
