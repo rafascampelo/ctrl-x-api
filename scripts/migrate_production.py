@@ -11,6 +11,7 @@ from sqlalchemy.engine import make_url
 
 from alembic import command
 from app.core.database_config import DatabaseSettings
+from app.core.startup_diagnostics import ConfigurationError, startup_step
 
 LOCK_NAME = "ctrlx.alembic.production"
 
@@ -19,10 +20,19 @@ def production_engine():
     if os.environ.get("APP_ENV") != "production" or os.environ.get("CI") == "true":
         raise RuntimeError("Production database access requires the Railway production environment")
     url = make_url(DatabaseSettings().database_url.get_secret_value())
-    if (url.drivername != "mysql+pymysql" or not url.host
-            or not url.host.endswith(".railway.internal") or url.port != 3306
-            or not url.username or not url.password or not url.database):
-        raise ValueError("Production requires private Railway MySQL with explicit credentials")
+    checks = (
+        (url.drivername == "mysql+pymysql", "driver", ["DATABASE_URL", "MYSQL_URL"]),
+        (bool(url.host) and url.host.endswith(".railway.internal"), "private_host",
+         ["DATABASE_URL", "MYSQL_URL", "DB_HOST", "MYSQLHOST"]),
+        (url.port == 3306, "port", ["DATABASE_URL", "MYSQL_URL", "DB_PORT", "MYSQLPORT"]),
+        (bool(url.username), "username", ["DATABASE_URL", "MYSQL_URL", "DB_USER", "MYSQLUSER"]),
+        (bool(url.password), "password",
+         ["DATABASE_URL", "MYSQL_URL", "DB_PASSWORD", "MYSQLPASSWORD"]),
+        (bool(url.database), "database", ["DATABASE_URL", "MYSQL_URL", "DB_NAME", "MYSQLDATABASE"]),
+    )
+    for valid, code, variables in checks:
+        if not valid:
+            raise ConfigurationError("production_database_" + code, variables)
     return create_engine(url, hide_parameters=True, pool_pre_ping=True,
                          connect_args={"connect_timeout": 10, "read_timeout": 600})
 
@@ -55,11 +65,14 @@ def check_connection(connection):
 
 def check_schema():
     """Read-only startup guard for every replica; never applies migrations."""
-    engine = production_engine()
+    with startup_step("database_engine"):
+        engine = production_engine()
     try:
-        with engine.connect() as connection:
-            check_connection(connection)
-            verify_revision(connection, Config("alembic.ini"))
+        with startup_step("database_connection"), engine.connect() as connection:
+            with startup_step("mysql_version"):
+                check_connection(connection)
+            with startup_step("alembic_revision"):
+                verify_revision(connection, Config("alembic.ini"))
     finally:
         engine.dispose()
 
