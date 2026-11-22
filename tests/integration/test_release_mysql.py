@@ -13,6 +13,8 @@ def test_mysql_release_holds_lock_on_migration_connection_and_always_releases(
 ):
     url = os.environ.get('TEST_DATABASE_URL')
     if not url:
+        if os.environ.get('CI') == 'true':
+            pytest.fail('TEST_DATABASE_URL is mandatory in CI')
         pytest.skip('requires isolated MySQL 8.4')
     validate_ci_database(url)
     monkeypatch.setenv('DATABASE_URL', url)

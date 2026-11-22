@@ -1,7 +1,8 @@
 # Base do backend
 
-Status atual inclui autenticação, perfis próprios, vínculos consentidos e leitura
-autorizada de pacientes. Consulte `frontend-contracts.md` para as rotas implementadas.
+Status atual inclui autenticação, perfis próprios, vínculos consentidos, leitura
+autorizada de pacientes e diário de dor persistido. Consulte `frontend-contracts.md`
+para as rotas implementadas.
 As demais seções descrevem a evolução prevista do P0.
 
 ## Produto e implantação

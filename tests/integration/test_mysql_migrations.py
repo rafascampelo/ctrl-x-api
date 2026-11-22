@@ -34,6 +34,8 @@ def test_mysql_is_isolated_and_at_migration_head():
 def test_mysql_cx02_migration_preserves_legacy_profiles_and_revoked_links():
     url = os.environ.get("TEST_DATABASE_URL")
     if not url:
+        if os.environ.get("CI") == "true":
+            pytest.fail("TEST_DATABASE_URL is mandatory in CI")
         pytest.skip("requires disposable MySQL")
     validate_ci_database(url)
     assert os.environ.get("DATABASE_URL") == url, "Migrations must target the disposable test database"

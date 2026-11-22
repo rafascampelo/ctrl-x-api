@@ -39,8 +39,20 @@ def test_register_login_and_me(client, role):
     assert response.status_code == 200
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "Secure" in response.headers["set-cookie"]
+    assert "samesite=none" in response.headers["set-cookie"].lower()
     assert client.get("/api/v1/auth/me").json()["role"] == role
     assert register(client).status_code == 409
+
+
+def test_development_cookie_uses_lax_without_secure(client, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    get_settings.cache_clear()
+    register(client)
+    response = login(client)
+    cookie = response.headers["set-cookie"].lower()
+    assert response.status_code == 200
+    assert "samesite=lax" in cookie
+    assert "secure" not in cookie
 
 
 def test_invalid_credentials_and_origin(client):
@@ -96,6 +108,7 @@ def test_logout_revokes_unexpired_jwt_and_is_idempotent(client):
     assert 'Max-Age=0' in response.headers['set-cookie']
     assert 'HttpOnly' in response.headers['set-cookie']
     assert 'Secure' in response.headers['set-cookie']
+    assert 'samesite=none' in response.headers['set-cookie'].lower()
     assert response.headers['cache-control'] == 'no-store'
     assert client.get('/api/v1/auth/me').status_code == 401
     client.cookies.set(COOKIE_NAME, token)
@@ -280,6 +293,8 @@ def test_cors_and_openapi(client):
 
 def test_mysql_concurrent_login_limit(client):
     if not os.environ.get('TEST_DATABASE_URL'):
+        if os.environ.get('CI') == 'true':
+            pytest.fail('TEST_DATABASE_URL is mandatory in CI')
         pytest.skip('requires real MySQL for row-lock concurrency validation')
     from concurrent.futures import ThreadPoolExecutor
 

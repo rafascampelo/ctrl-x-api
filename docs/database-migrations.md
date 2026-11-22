@@ -99,9 +99,10 @@ execu??es do comando, mas n?o torna DDL transacional nem evita bloqueios de tabe
 
 Configurar a URL real da API no contrato de ambiente do frontend e CORS_ORIGINS
 na API. Endpoints usam /api/v1; /health deve retornar 200 com {"status":"ok"}.
-Cookies atuais s?o HttpOnly, Secure em produ??o e SameSite=Lax. Dom?nios padr?o
-Vercel/Railway s?o cross-site: usar dom?nios pr?prios no mesmo site ou proxy de
-mesma origem para autentica??o; CORS sozinho n?o resolve essa restri??o.
+Cookies s?o HttpOnly e SameSite=None, com Secure fora de development
+(SameSite=Lax sem Secure em development), para permitir Vercel/Railway cross-site.
+CORS e valida??o estrita de Origin continuam obrigat?rios. Se o navegador bloquear
+cookies de terceiros, usar dom?nios pr?prios no mesmo site ou proxy de mesma origem.
 
 ## Refer?ncias
 

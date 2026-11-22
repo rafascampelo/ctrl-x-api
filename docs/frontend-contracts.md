@@ -13,8 +13,9 @@ As respostas autenticadas possuem `Cache-Control: no-store`.
 | `GET /auth/me` | Cookie | 200, `{id, email, role}` |
 | `POST /auth/logout` | Cookie e Origin | 204, revoga sessão e remove cookie |
 
-Cookie HttpOnly, host-only, SameSite=Lax, Secure fora de desenvolvimento,
-validade de 900 segundos. Reautenticar após expiração. Login limitado a cinco
+Cookie HttpOnly, host-only, SameSite=None e Secure fora de desenvolvimento;
+development usa SameSite=Lax sem Secure. Validade de 900 segundos.
+Reautenticar após expiração. Login limitado a cinco
 tentativas por conta em 300 segundos, com 429 e `Retry-After`.
 
 ## Perfis e vínculos
@@ -97,9 +98,58 @@ sem permissão, 404 cobre recurso inexistente ou fora do escopo do usuário,
 409 indica conflito de estado, 422 indica payload/parâmetro inválido.
 Erros de validação omitem os valores recebidos.
 
+## Diário de dor
+
+| Método e rota | Entrada | Sucesso |
+| --- | --- | --- |
+| `POST /me/pain-entries` | Paciente: `{region, intensity, description?, occurred_at?}` | 201, entrada persistida |
+| `PATCH /pain-entries/{entry_id}` | Paciente dono: subconjunto não vazio dos campos de criação | 200, entrada atualizada |
+| `DELETE /pain-entries/{entry_id}` | Paciente dono; sem corpo | 204 |
+| `GET /patients/{patient_id}/pain-entries` | Paciente dono ou profissional verificado com vínculo ativo; `limit`, `cursor`, `start`, `end` opcionais | 200, `{items, next_cursor}` |
+
+Entrada tem `{id, patient_id, region, intensity, description, occurred_at,
+created_at, updated_at}`. IDs são UUIDs; `patient_id` vem da sessão na criação,
+nunca do corpo enviado. `region` aceita 1–100 caracteres após remover espaços
+externos; `intensity` é inteiro de 0 a 10 (booleanos, strings e frações são
+rejeitados); `description` é opcional/nula e aceita até 2000 caracteres.
+Campos adicionais são rejeitados. No PATCH, somente `description` aceita null;
+campos omitidos preservam o valor atual. Exclusão remove a entrada, preservando
+seu evento de auditoria, sem guardar o conteúdo clínico no evento.
+
+`occurred_at` representa quando a dor ocorreu. Exige ISO 8601 com timezone;
+quando omitido na criação, recebe o instante atual. Datas são normalizadas para
+UTC e `occurred_at` tem precisão de segundos (frações são descartadas).
+`created_at` e `updated_at` são controlados pelo servidor. Converta datas para o
+fuso do paciente na interface.
+
+Lista em ordem decrescente de `(occurred_at, id)`, com cursor exclusivo opaco;
+`limit` de 1 a 100, padrão 20. Reenvie `next_cursor` como parâmetro URL usando
+`URLSearchParams`, preservando os filtros; null encerra a paginação. `start`
+inclui o instante inicial; `end` exclui o final. Ambos exigem timezone e, se
+enviados juntos, `start < end`. Sem filtros, a consulta inclui todo o histórico,
+sempre paginado. Alterações concorrentes de `occurred_at` podem mover entradas
+entre páginas; recarregue a lista após editar.
+
+```json
+{"region":"Joelho esquerdo","intensity":5,"description":"Exemplo fictício","occurred_at":"2026-01-02T12:30:00-03:00"}
+```
+
+Profissionais nunca criam, editam ou excluem entradas, mesmo com vínculo ativo
+(403). Leituras exigem verificação profissional e vínculo ativo em cada
+requisição; pendência/revogação bloqueia acesso (404), sem apagar o diário.
+Outro paciente recebe 404 para leitura, edição ou exclusão. Sessão ausente
+retorna 401; mutações exigem Origin permitido, inclusive DELETE (CORS habilitado).
+Respostas de sucesso usam `Cache-Control: no-store`.
+
+A migration `0007_pain_entries` cria a entidade e um índice por paciente/data/ID,
+sem tabelas adicionais de timeline ou calendário. `care_audit_events` registra
+`pain_entry_created`, `pain_entries_viewed`, `pain_entry_updated` e
+`pain_entry_deleted`, contendo somente ator, paciente, recurso, ação e instante.
+Frontend não faz parte desta entrega.
+
 ## Próximos incrementos P0
 
-Diário de dor, prontuários nativos com finalização e adendos e timeline
+Prontuários nativos com finalização e adendos e timeline
 longitudinal ainda dependem de implementação. As rotas propostas estão em
 `api-design.md`. A existência de vínculo profissional não concede acesso
 automático a documentos.

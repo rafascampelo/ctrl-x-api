@@ -124,6 +124,8 @@ def test_profile_registration_ownership_duplicates_and_no_self_verification(clie
 def test_mysql_crefito_constraint_and_concurrent_registration(client):
     url = os.environ.get('TEST_DATABASE_URL')
     if not url:
+        if os.environ.get('CI') == 'true':
+            pytest.fail('TEST_DATABASE_URL is mandatory in CI')
         pytest.skip('requires isolated real MySQL')
     engine = create_engine(url, hide_parameters=True)
 
