@@ -73,9 +73,27 @@ def test_failing_public_health_is_not_accepted():
     with (
         patch("scripts.deploy_railway.urlopen", side_effect=TimeoutError),
         patch("scripts.deploy_railway.time.sleep"),
-        pytest.raises(RuntimeError, match="/health failed"),
+        pytest.raises(RuntimeError, match="GET /health failed after retries"),
     ):
         check_health("https://api.example.test")
+
+
+def test_public_health_retries_transient_network_errors_then_accepts_health():
+    from urllib.error import URLError
+
+    response = type("HealthResponse", (), {
+        "status": 200,
+        "__enter__": lambda self: self,
+        "__exit__": lambda self, *args: None,
+    })()
+    response.read = lambda: b'{"status":"ok"}'
+    with (
+        patch("scripts.deploy_railway.urlopen",
+              side_effect=[URLError("temporary DNS failure"), response]) as request,
+        patch("scripts.deploy_railway.time.sleep"),
+    ):
+        check_health("https://api.example.test")
+        assert request.call_count == 2
 
 
 @pytest.mark.parametrize(

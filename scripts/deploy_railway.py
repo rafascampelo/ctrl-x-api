@@ -6,7 +6,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import urlopen
 
@@ -159,17 +159,21 @@ def wait_for_deployment(
 
 def check_health(base_url: str) -> None:
     validate_base_url(base_url)
+    last_result = "no response"
     for attempt in range(30):
         try:
             with urlopen(base_url.rstrip("/") + "/health", timeout=5) as response:
                 if response.status == 200 and json.load(response) == {"status": "ok"}:
                     print("Production /health verified", flush=True)
                     return
-        except (URLError, TimeoutError, ValueError):
-            pass
+                last_result = f"HTTP {response.status} or unexpected response body"
+        except HTTPError as error:
+            last_result = f"HTTP {error.code}"
+        except (URLError, TimeoutError, ValueError, OSError) as error:
+            last_result = type(error).__name__
         if attempt < 29:
             time.sleep(5)
-    raise RuntimeError("Production /health failed; publication is not accepted")
+    raise RuntimeError(f"Production GET /health failed after retries ({last_result})")
 
 
 def main() -> None:
