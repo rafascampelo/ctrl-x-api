@@ -1,5 +1,14 @@
 # Ctrl X Backend
 
+## Diário de dor
+
+API implementada com entradas persistidas por paciente, intensidade 0–10,
+região, descrição opcional e instante UTC. Paciente pode criar, editar e excluir;
+profissional verificado pode ler somente com vínculo ativo. Histórico paginado
+com filtros por período, auditoria sem conteúdo clínico e migration
+`0007_pain_entries`. Veja [contrato HTTP](docs/frontend-contracts.md#diário-de-dor).
+Formulário e histórico do frontend ficam para uma entrega posterior.
+
 ## Perfis e vínculos profissionais
 
 O incremento P0 de perfis e vínculos está implementado. Os contratos para o
@@ -67,7 +76,7 @@ somente a sessão apresentada. Reutilizar seu JWT ainda não expirado retorna
 No frontend use `fetch(url, {credentials: "include", ...})`, inclusive em login,
 `/me` e logout, e `Content-Type: application/json` ao enviar JSON. O navegador
 adiciona `Origin`. Ao receber 401, solicite novo login. Tokens permanecem no
-cookie HttpOnly. CORS permite GET/POST/PATCH e Content-Type com credenciais apenas
+cookie HttpOnly. CORS permite GET/POST/PATCH/DELETE e Content-Type com credenciais apenas
 para as origens configuradas, e expõe `Retry-After` ao frontend.
 
 Frontend e API precisam compartilhar o mesmo site e esquema HTTPS em produção,
