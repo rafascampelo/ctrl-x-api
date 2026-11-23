@@ -39,8 +39,13 @@ def test_register_login_and_me(client, role):
     assert response.status_code == 200
     assert "HttpOnly" in response.headers["set-cookie"]
     assert "Secure" in response.headers["set-cookie"]
+    assert "Max-Age=900" in response.headers["set-cookie"]
+    assert response.headers["x-session-remaining"] == "900"
     assert "samesite=none" in response.headers["set-cookie"].lower()
-    assert client.get("/api/v1/auth/me").json()["role"] == role
+    session = client.get("/api/v1/auth/me", headers=ORIGIN)
+    assert session.json()["role"] == role
+    assert 0 < int(session.headers["x-session-remaining"]) <= 900
+    assert "X-Session-Remaining" in session.headers["access-control-expose-headers"]
     assert register(client).status_code == 409
 
 
@@ -239,6 +244,12 @@ def test_expiration_and_session_binding(client):
     claims = jwt.decode(token, settings.secret_key.get_secret_value(), algorithms=['HS256'],
                         audience=settings.jwt_audience, issuer=settings.jwt_issuer)
     assert claims['exp'] - claims['iat'] == 900
+    with next(app.dependency_overrides[get_db]()) as db:
+        session = db.get(AuthSession, claims['jti'])
+        session.expires_at = datetime.now(UTC) + timedelta(seconds=30)
+        db.commit()
+    remaining = client.get('/api/v1/auth/me')
+    assert 0 < int(remaining.headers['x-session-remaining']) <= 30
     claims['exp'] = datetime.now(UTC) - timedelta(seconds=1)
     client.cookies.set(COOKIE_NAME, jwt.encode(claims, settings.secret_key.get_secret_value(),
                                             algorithm='HS256'))

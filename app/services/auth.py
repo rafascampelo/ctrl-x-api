@@ -5,7 +5,12 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import DUMMY_HASH, create_access_token, password_hash
+from app.core.security import (
+    DUMMY_HASH,
+    SESSION_DURATION_SECONDS,
+    create_access_token,
+    password_hash,
+)
 from app.models.auth import AuthSession
 from app.models.user import Patient, Professional, Role, User
 from app.repositories.auth import audit, reserve_login_attempt
@@ -49,8 +54,11 @@ def authenticate(db: Session, data: Credentials) -> User:
 
 
 def start_session(db: Session, user: User) -> str:
-    session = AuthSession(id=str(uuid4()), user_id=user.id,
-                          expires_at=datetime.now(UTC) + timedelta(minutes=15))
+    issued_at = datetime.now(UTC).replace(microsecond=0)
+    session = AuthSession(
+        id=str(uuid4()), user_id=user.id,
+        expires_at=issued_at + timedelta(seconds=SESSION_DURATION_SECONDS),
+    )
     db.add(session)
     token = create_access_token(user, session)
     audit(db, "login_succeeded", user.id)

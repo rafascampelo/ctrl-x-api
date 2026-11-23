@@ -8,13 +8,14 @@ from app.api.v1.endpoints.care import router as care_router
 from app.api.v1.endpoints.history import router as history_router
 from app.api.v1.endpoints.pain import router as pain_router
 from app.core.config import CorsSettings
+from app.core.security import SESSION_REMAINING_HEADER
 
 app = FastAPI(title="Ctrl X API", version="0.1.0")
 
 origins = CorsSettings().origins
 app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True,
                    allow_methods=["GET", "POST", "PATCH", "DELETE"], allow_headers=["Content-Type"],
-                   expose_headers=["Retry-After"])
+                   expose_headers=["Retry-After", SESSION_REMAINING_HEADER])
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(care_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1")

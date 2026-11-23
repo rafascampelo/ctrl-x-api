@@ -15,7 +15,10 @@ As respostas autenticadas possuem `Cache-Control: no-store`.
 
 Cookie HttpOnly, host-only, SameSite=None e Secure fora de desenvolvimento;
 development usa SameSite=Lax sem Secure. Validade de 900 segundos.
-Reautenticar após expiração. Login limitado a cinco
+`POST /auth/login` e `GET /auth/me` expõem `X-Session-Remaining` ao frontend
+com os segundos restantes da sessão. Consultar `/auth/me` não renova o prazo.
+Na expiração ou ao receber 401 em uma sessão autenticada, o frontend descarta
+o cache privado em memória e volta ao login. Login limitado a cinco
 tentativas por conta em 300 segundos, com 429 e `Retry-After`.
 
 ## Perfis e vínculos
