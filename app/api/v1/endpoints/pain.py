@@ -20,6 +20,15 @@ Authenticated = Annotated[User, Depends(current_user)]
 PatientUser = Annotated[User, Depends(require_role(Role.PATIENT))]
 
 
+@router.get("/me/pain-entries", response_model=PainPage)
+def own_entries(response: Response, user: PatientUser, db: Database,
+                start: AwareDatetime | None = None, end: AwareDatetime | None = None,
+                cursor: Annotated[str | None, Query(max_length=100)] = None,
+                limit: Annotated[int, Query(ge=1, le=100)] = 20):
+    response.headers["Cache-Control"] = "no-store"
+    return service.list_own_entries(db, user, start, end, cursor, limit)
+
+
 @router.post("/me/pain-entries", response_model=PainResponse, status_code=201)
 def create(data: PainCreate, response: Response, user: PatientUser, db: Database):
     response.headers["Cache-Control"] = "no-store"
