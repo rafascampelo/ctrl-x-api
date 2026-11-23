@@ -140,6 +140,26 @@ Outro paciente recebe 404 para leitura, edição ou exclusão. Sessão ausente
 retorna 401; mutações exigem Origin permitido, inclusive DELETE (CORS habilitado).
 Respostas de sucesso usam `Cache-Control: no-store`.
 
+## Linha do tempo, calendário e dashboard do paciente
+
+| Endpoint | Parâmetros | Resposta |
+| --- | --- | --- |
+| `GET /me/timeline` | `month` (AAAA-MM) ou `date` (AAAA-MM-DD), `timezone` (IANA), `category`, `limit`, `cursor` | `{items, next_cursor}` |
+| `GET /me/calendar` | `month` (AAAA-MM), `timezone` (IANA) | `{month, timezone, days, pain}` |
+
+As rotas usam o paciente autenticado. Datas e meses começam à meia-noite
+local e terminam antes da meia-noite seguinte ao período solicitado. Quando
+omitido, `timezone` usa UTC. O frontend usa o fuso do navegador. Cada evento
+de dor usa o UUID, a região, a intensidade e o instante UTC da entrada do
+diário. O cursor é opaco e deve ser reenviado com o mesmo filtro. As
+categorias `exercise` e `clinical_record` retornam lista vazia até que
+essas fontes sejam integradas.
+
+O calendário retorna apenas datas com registros, com `date` e
+`pain_count`. O dashboard usa `pain.count`, `pain.average_intensity` e
+`pain.latest_intensity` do mesmo mês. Em meses sem registros, a média e a
+última intensidade são nulas. Uma intensidade registrada de zero é válida.
+
 A migration `0007_pain_entries` cria a entidade e um índice por paciente/data/ID,
 sem tabelas adicionais de timeline ou calendário. `care_audit_events` registra
 `pain_entry_created`, `pain_entries_viewed`, `pain_entry_updated` e

@@ -12,6 +12,14 @@ def owned_entry(db: Session, entry_id: str, patient_id: str):
     ).with_for_update())
 
 
+def intensities(db: Session, patient_id: str, start: datetime, end: datetime):
+    return db.execute(select(PainEntry.occurred_at, PainEntry.intensity).where(
+        PainEntry.patient_id == patient_id,
+        PainEntry.occurred_at >= start,
+        PainEntry.occurred_at < end,
+    ).order_by(PainEntry.occurred_at.desc(), PainEntry.id.desc()).execution_options(yield_per=512))
+
+
 def entries(db: Session, patient_id: str, start: datetime | None, end: datetime | None,
             cursor: tuple[datetime, str] | None, limit: int):
     query = select(PainEntry).where(PainEntry.patient_id == patient_id)

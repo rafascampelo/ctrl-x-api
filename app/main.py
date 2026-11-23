@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.care import router as care_router
+from app.api.v1.endpoints.history import router as history_router
 from app.api.v1.endpoints.pain import router as pain_router
 from app.core.config import CorsSettings
 
@@ -16,6 +17,7 @@ app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True
                    expose_headers=["Retry-After"])
 app.include_router(auth_router, prefix="/api/v1")
 app.include_router(care_router, prefix="/api/v1")
+app.include_router(history_router, prefix="/api/v1")
 app.include_router(pain_router, prefix="/api/v1")
 
 
