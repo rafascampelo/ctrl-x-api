@@ -15,7 +15,10 @@ As respostas autenticadas possuem `Cache-Control: no-store`.
 
 Cookie HttpOnly, host-only, SameSite=None e Secure fora de desenvolvimento;
 development usa SameSite=Lax sem Secure. Validade de 900 segundos.
-Reautenticar após expiração. Login limitado a cinco
+`POST /auth/login` e `GET /auth/me` expõem `X-Session-Remaining` ao frontend
+com os segundos restantes da sessão. Consultar `/auth/me` não renova o prazo.
+Na expiração ou ao receber 401 em uma sessão autenticada, o frontend descarta
+o cache privado em memória e volta ao login. Login limitado a cinco
 tentativas por conta em 300 segundos, com 429 e `Retry-After`.
 
 ## Perfis e vínculos
@@ -139,6 +142,26 @@ requisição; pendência/revogação bloqueia acesso (404), sem apagar o diário
 Outro paciente recebe 404 para leitura, edição ou exclusão. Sessão ausente
 retorna 401; mutações exigem Origin permitido, inclusive DELETE (CORS habilitado).
 Respostas de sucesso usam `Cache-Control: no-store`.
+
+## Linha do tempo, calendário e dashboard do paciente
+
+| Endpoint | Parâmetros | Resposta |
+| --- | --- | --- |
+| `GET /me/timeline` | `month` (AAAA-MM) ou `date` (AAAA-MM-DD), `timezone` (IANA), `category`, `limit`, `cursor` | `{items, next_cursor}` |
+| `GET /me/calendar` | `month` (AAAA-MM), `timezone` (IANA) | `{month, timezone, days, pain}` |
+
+As rotas usam o paciente autenticado. Datas e meses começam à meia-noite
+local e terminam antes da meia-noite seguinte ao período solicitado. Quando
+omitido, `timezone` usa UTC. O frontend usa o fuso do navegador. Cada evento
+de dor usa o UUID, a região, a intensidade e o instante UTC da entrada do
+diário. O cursor é opaco e deve ser reenviado com o mesmo filtro. As
+categorias `exercise` e `clinical_record` retornam lista vazia até que
+essas fontes sejam integradas.
+
+O calendário retorna apenas datas com registros, com `date` e
+`pain_count`. O dashboard usa `pain.count`, `pain.average_intensity` e
+`pain.latest_intensity` do mesmo mês. Em meses sem registros, a média e a
+última intensidade são nulas. Uma intensidade registrada de zero é válida.
 
 A migration `0007_pain_entries` cria a entidade e um índice por paciente/data/ID,
 sem tabelas adicionais de timeline ou calendário. `care_audit_events` registra

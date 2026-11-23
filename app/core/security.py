@@ -17,12 +17,14 @@ from app.repositories.auth import utc
 password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("not-a-real-password-for-timing")
 COOKIE_NAME = "ctrlx_access"
+SESSION_DURATION_SECONDS = 900
+SESSION_REMAINING_HEADER = "X-Session-Remaining"
 cookie_auth = APIKeyCookie(name=COOKIE_NAME, auto_error=False)
 
 
 def create_access_token(user: User, session: AuthSession) -> str:
     settings = get_settings()
-    now = session.expires_at - timedelta(minutes=15)
+    now = session.expires_at - timedelta(seconds=SESSION_DURATION_SECONDS)
     return jwt.encode(
         {"sub": user.id, "iss": settings.jwt_issuer, "aud": settings.jwt_audience,
          "iat": now, "exp": session.expires_at, "jti": session.id},
@@ -54,6 +56,7 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)],
             or utc(session.expires_at) <= datetime.now(UTC)):
         raise error
     request.state.auth_session_id = session.id
+    request.state.auth_session_expires_at = utc(session.expires_at)
     user = db.get(User, user_id)
     if user is None:
         raise error

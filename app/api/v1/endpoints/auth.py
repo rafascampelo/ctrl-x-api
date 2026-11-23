@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from math import ceil
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -8,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.core.security import (
     COOKIE_NAME,
+    SESSION_DURATION_SECONDS,
+    SESSION_REMAINING_HEADER,
     cookie_auth,
     current_user,
     require_trusted_origin,
@@ -40,10 +43,11 @@ def register(data: Registration, db: Annotated[Session, Depends(get_db)]):
 @router.post("/login", response_model=UserResponse, dependencies=[Depends(require_trusted_origin)],
              responses={
                  200: {"description": "User and host-only ctrlx_access JWT cookie. "
-                       "HttpOnly; Path=/; Max-Age=900; SameSite=None. "
+                       f"HttpOnly; Path=/; Max-Age={SESSION_DURATION_SECONDS}; SameSite=None. "
                        "Secure outside development. No refresh token.",
                        "headers": {"Set-Cookie": {"schema": {"type": "string"}},
-                                   "Cache-Control": {"schema": {"type": "string"}}}},
+                                   "Cache-Control": {"schema": {"type": "string"}},
+                                   SESSION_REMAINING_HEADER: {"schema": {"type": "integer"}}}},
                  401: {"model": ErrorResponse, "description": "Invalid credentials"},
                  403: {"model": ErrorResponse, "description": "Missing or untrusted Origin"},
                  429: {"model": ErrorResponse, "description": "Login limit reached", "headers": {
@@ -52,20 +56,26 @@ def register(data: Registration, db: Annotated[Session, Depends(get_db)]):
 def login(data: Credentials, response: Response, db: Annotated[Session, Depends(get_db)]):
     user = auth.authenticate(db, data)
     response.set_cookie(
-        COOKIE_NAME, auth.start_session(db, user), max_age=900, httponly=True,
+        COOKIE_NAME, auth.start_session(db, user), max_age=SESSION_DURATION_SECONDS, httponly=True,
         secure=get_settings().app_env != "development", samesite=_cookie_samesite(), path="/",
     )
     response.headers["Cache-Control"] = "no-store"
+    response.headers[SESSION_REMAINING_HEADER] = str(SESSION_DURATION_SECONDS)
     return user
 
 
 @router.get("/me", response_model=UserResponse,
-            responses={401: {"model": ErrorResponse, "description": "Missing, expired, invalid or revoked session"}})
-def me(response: Response, user: Annotated[User, Depends(current_user)],
+            responses={
+                200: {"headers": {SESSION_REMAINING_HEADER: {"schema": {"type": "integer"}}}},
+                401: {"model": ErrorResponse, "description": "Missing, expired, invalid or revoked session"},
+            })
+def me(request: Request, response: Response, user: Annotated[User, Depends(current_user)],
        db: Annotated[Session, Depends(get_db)]):
     audit(db, "session_viewed", user.id)
     db.commit()
     response.headers["Cache-Control"] = "no-store"
+    remaining = request.state.auth_session_expires_at - datetime.now(UTC)
+    response.headers[SESSION_REMAINING_HEADER] = str(max(0, ceil(remaining.total_seconds())))
     return user
 
 
