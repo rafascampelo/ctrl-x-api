@@ -32,7 +32,7 @@ def payload(**changes):
     {'crefito_number': '12345678-F'}, {'crefito_number': '../123-F'},
     {'full_name': ' '}, {'profession': 'physiotherapist'},
     {'verification_status': 'verified'}, {'verified_at': '2026-01-01T00:00:00Z'},
-    {'verification_reference': 'forged'}, {'role': 'PATIENT'},
+    {'verification_reference': 'forged'}, {'account_status': 'active'}, {'role': 'PATIENT'},
 ])
 def test_registration_rejects_invalid_or_client_verified_crefito(client, changes):
     response = client.post('/api/v1/auth/register', headers=ORIGIN, json=payload(**changes))
@@ -52,6 +52,7 @@ def test_registration_requires_crefito_and_preserves_auth_contract(client):
     }).status_code == 200
     profile = client.get('/api/v1/me').json()
     assert profile['crefito_number'] == '12345-F'
+    assert profile['account_status'] == 'active'
     assert profile['verification_status'] == 'unverified'
     assert 'crefito_review' not in profile
     assert 'verification_reference' not in profile
@@ -66,6 +67,7 @@ def test_registration_requires_crefito_and_preserves_auth_contract(client):
 
 def test_declared_crefito_allows_access_only_during_active_link(client):
     professional = account(client, 'PROFESSIONAL', 'unverified', verified=False)
+    assert professional['account_status'] == 'active'
     assert professional['verification_status'] == 'unverified'
     assert client.get('/api/v1/patients').json()['items'] == []
     patient = account(client, 'PATIENT', 'patient')
@@ -84,7 +86,7 @@ def test_declared_crefito_allows_access_only_during_active_link(client):
 def test_profile_registration_ownership_duplicates_and_no_self_verification(client):
     first = account(client, 'PROFESSIONAL', 'first')
     second = account(client, 'PROFESSIONAL', 'second')
-    for changes in ({'verification_status': 'verified'}, {'user_id': first['user_id']},
+    for changes in ({'verification_status': 'verified'}, {'account_status': 'active'}, {'user_id': first['user_id']},
                     {'crefito_number': '123-F'}, {'crefito_region': None, 'crefito_number': None}):
         assert client.patch('/api/v1/me', headers=ORIGIN, json={
             'full_name': second['full_name'], **changes,
