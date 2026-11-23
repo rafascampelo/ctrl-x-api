@@ -1,18 +1,10 @@
 from datetime import UTC, datetime
-from enum import StrEnum
 from uuid import uuid4
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
-
-class CrefitoResult(StrEnum):
-    ACTIVE = "active"
-    CANCELLED = "cancelled"
-    NOT_FOUND = "not_found"
-    NEEDS_REVIEW = "needs_review"
 
 
 class CrefitoReview(Base):

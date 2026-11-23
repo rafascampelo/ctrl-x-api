@@ -36,7 +36,7 @@ Perfil tem `{id, user_id, role, full_name}`. `id` identifica o perfil de pacient
 ou profissional. `user_id` identifica a conta e corresponde a `id` de `/auth/me`.
 Usar o ID de perfil nos parâmetros `patient_id` e `professional_id`.
 O profissional também recebe `crefito_region`, `crefito_number`,
-`verification_status` e `crefito_review`. Nome e CREFITO são editáveis.
+`verification_status`. Nome e CREFITO são editáveis.
 O paciente não pode enviar campos profissionais. Campos adicionais são rejeitados.
 
 Novo cadastro `PROFESSIONAL` exige regional (inteiro 1–22) e número (string de
@@ -55,19 +55,13 @@ regional e número juntos, não nulos. Colisão retorna 409
 Exemplo de resposta profissional, com identificadores fictícios:
 
 ```json
-{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified","crefito_review":{"id":"00000000-0000-0000-0000-000000000003","status":"created","result":null}}
+{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified"}
 ```
 
-`crefito_review` é nulo quando ainda não há solicitação, como em perfis legados.
-`created` com resultado nulo indica conferência pendente. `processed` recebe
-`active`, `cancelled`, `not_found` ou `needs_review`. Exiba `active` como
-“Inscrição ativa no conselho”. Use `verification_status` para indicar a
-verificação do profissional. Esses campos são de leitura.
-
-Novos profissionais começam como `unverified`. Aceite e leitura profissional de
-pacientes exigem verificação e retornam 403 `Professional verification required`
-sem ela. Pedido para alvo não verificado retorna 404 `Professional not found`.
-Alterar nome ou CREFITO retira a verificação. [Fluxo de conferência](crefito-verification.md)
+O CREFITO é declarado pelo profissional e passa por validação de formato.
+O aceite exige uma solicitação pendente destinada ao profissional. Leitura
+de dados do paciente pelo profissional exige vínculo ativo.
+`verification_status` é um campo legado de leitura que a interface pode ignorar.
 
 Vínculo tem `{id, patient_id, professional_id, status, created_at, accepted_at,
 revoked_at, closed_at}`. Status `pending`, `active`, `revoked`, `rejected` ou
@@ -107,7 +101,7 @@ Erros de validação omitem os valores recebidos.
 | `POST /me/pain-entries` | Paciente: `{region, intensity, description?, occurred_at?}` | 201, entrada persistida |
 | `PATCH /pain-entries/{entry_id}` | Paciente dono: subconjunto não vazio dos campos de criação | 200, entrada atualizada |
 | `DELETE /pain-entries/{entry_id}` | Paciente dono; sem corpo | 204 |
-| `GET /patients/{patient_id}/pain-entries` | Paciente dono ou profissional verificado com vínculo ativo; `limit`, `cursor`, `start`, `end` opcionais | 200, `{items, next_cursor}` |
+| `GET /patients/{patient_id}/pain-entries` | Paciente dono ou profissional com vínculo ativo; `limit`, `cursor`, `start`, `end` opcionais | 200, `{items, next_cursor}` |
 
 Entrada tem `{id, patient_id, region, intensity, description, occurred_at,
 created_at, updated_at}`. IDs são UUIDs; `patient_id` vem da sessão na criação,
@@ -137,7 +131,7 @@ entre páginas; recarregue a lista após editar.
 ```
 
 Profissionais nunca criam, editam ou excluem entradas, mesmo com vínculo ativo
-(403). Leituras exigem verificação profissional e vínculo ativo em cada
+(403). Leituras por profissionais exigem vínculo ativo em cada
 requisição; pendência/revogação bloqueia acesso (404), sem apagar o diário.
 Outro paciente recebe 404 para leitura, edição ou exclusão. Sessão ausente
 retorna 401; mutações exigem Origin permitido, inclusive DELETE (CORS habilitado).

@@ -11,7 +11,6 @@ from app.models.user import Patient, Professional, Role, User
 from app.repositories.auth import audit, reserve_login_attempt
 from app.repositories.users import by_email
 from app.schemas.auth import Credentials, Registration
-from app.services.crefito_reviews import request_review
 
 
 def register(db: Session, data: Registration) -> User:
@@ -23,8 +22,6 @@ def register(db: Session, data: Registration) -> User:
     try:
         db.add(profile)
         db.flush()
-        if isinstance(profile, Professional):
-            request_review(db, profile)
         audit(db, "register_succeeded", user.id)
         db.commit()
     except IntegrityError:

@@ -4,7 +4,7 @@
 
 API implementada com entradas persistidas por paciente, intensidade 0–10,
 região, descrição opcional e instante UTC. Paciente pode criar, editar e excluir;
-profissional verificado pode ler somente com vínculo ativo. Histórico paginado
+profissional pode ler somente com vínculo ativo. Histórico paginado
 com filtros por período, auditoria sem conteúdo clínico e migration
 `0007_pain_entries`. Veja [contrato HTTP](docs/frontend-contracts.md#diário-de-dor).
 Formulário e histórico do frontend ficam para uma entrega posterior.
@@ -13,12 +13,9 @@ Formulário e histórico do frontend ficam para uma entrega posterior.
 
 O incremento P0 de perfis e vínculos está implementado. Os contratos para o
 frontend estão em [docs/frontend-contracts.md](docs/frontend-contracts.md).
-O MVP profissional é exclusivo para fisioterapeutas e exige CREFITO no cadastro.
-Formato válido não verifica habilitação. Profissionais não verificados ficam
-bloqueados para atuação clínica, inclusive por vínculos preexistentes.
-A migration `0008_crefito_reviews` persiste a fila de conferência no portal
-público do CREFITO-3. O perfil mostra o resultado cadastral. A autorização
-clínica exige comprovação de titularidade. [Fluxo de conferência](docs/crefito-verification.md)
+O MVP profissional é exclusivo para fisioterapeutas e exige regional e número
+do CREFITO no cadastro. A API valida o formato e registra a declaração. O
+acesso a pacientes exige um vínculo ativo entre o profissional e o paciente.
 A migration `0004_professional_links` adiciona consentimento, histórico de vínculos,
 restrição atômica de um profissional ativo por paciente e auditoria de acesso.
 `0005_professional_crefito` adiciona CREFITO declarado único e status protegido;

@@ -1,5 +1,9 @@
 # CREFITO: declaração e verificação
 
+Nesta branch, o CREFITO informado passa por validação de formato. O vínculo
+ativo autoriza o acesso ao paciente. O texto abaixo registra o histórico do
+fluxo de conferência suspenso no produto.
+
 Decisões aprovadas em 15/11/2026: MVP exclusivo para fisioterapeutas; nome,
 regional e número do CREFITO obrigatórios em novos cadastros profissionais;
 profissionais não verificados bloqueados para atuação clínica. Validação de

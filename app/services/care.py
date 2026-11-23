@@ -6,14 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.models.professional_link import LinkStatus, ProfessionalLink
 from app.models.user import Role, User
-from app.repositories import care, crefito_reviews
-from app.schemas.care import (
-    CrefitoReviewResponse,
-    ProfessionalProfileResponse,
-    ProfileResponse,
-    ProfileUpdate,
-)
-from app.services.crefito_reviews import clear_verification, replace_review
+from app.repositories import care
+from app.schemas.care import ProfessionalProfileResponse, ProfileResponse, ProfileUpdate
 
 
 def own_profile(db: Session, user: User):
@@ -23,28 +17,23 @@ def own_profile(db: Session, user: User):
     return result
 
 
-def profile_response(profile, role: Role, review=None):
+def profile_response(profile, role: Role):
     values = {"id": profile.id, "user_id": profile.user_id,
               "full_name": profile.full_name, "role": role}
     if role == Role.PROFESSIONAL:
         return ProfessionalProfileResponse(
             **values, crefito_region=profile.crefito_region, crefito_number=profile.crefito_number,
             verification_status=profile.verification_status,
-            crefito_review=CrefitoReviewResponse(
-                id=review.id, status="created" if review.result is None else "processed",
-                result=review.result,
-            ) if review is not None else None,
         )
     return ProfileResponse(**values)
 
 
 def read_profile(db: Session, user: User):
     profile = own_profile(db, user)
-    review = crefito_reviews.current_review(db, profile.id) if user.role == Role.PROFESSIONAL else None
     care.audit(db, user, "profile_viewed", profile.id,
                profile.id if user.role == Role.PATIENT else None)
     db.commit()
-    return profile_response(profile, user.role, review)
+    return profile_response(profile, user.role)
 
 
 def update_profile(db: Session, user: User, data: ProfileUpdate):
@@ -57,24 +46,21 @@ def update_profile(db: Session, user: User, data: ProfileUpdate):
             raise HTTPException(422, "Invalid request payload")
         profile.crefito_region = data.crefito_region
         profile.crefito_number = data.crefito_number
-    needs_review = user.role == Role.PROFESSIONAL and (
+    if user.role == Role.PROFESSIONAL and (
         bool(fields) or profile.full_name != data.full_name
-    )
-    if needs_review:
-        clear_verification(profile)
+    ):
+        profile.verification_status = "unverified"
+        profile.verified_at = None
+        profile.verification_reference = None
     profile.full_name = data.full_name
     care.audit(db, user, "profile_updated", profile.id,
                profile.id if user.role == Role.PATIENT else None)
     try:
-        if needs_review:
-            replace_review(db, profile)
-        review = crefito_reviews.current_review(db, profile.id) if user.role == Role.PROFESSIONAL else None
-        response = profile_response(profile, user.role, review)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Unable to update profile with these details") from None
-    return response
+    return profile_response(profile, user.role)
 
 
 def list_links(db: Session, user: User, cursor: str | None, limit: int):
@@ -96,7 +82,6 @@ def read_patient(db: Session, user: User, patient_id: str):
 
 def list_patients(db: Session, user: User, cursor: str | None, limit: int):
     professional = own_profile(db, user)
-    require_verified_professional(professional)
     patients = care.linked_patients(db, professional.id, cursor, limit)
     next_cursor = patients[limit - 1].id if len(patients) > limit else None
     for patient in patients[:limit]:
@@ -111,7 +96,6 @@ def authorize_patient(db: Session, user: User, patient_id: str):
     if user.role == Role.PATIENT:
         allowed = identity.id == patient_id
     else:
-        require_verified_professional(identity)
         allowed = care.active_link(db, patient_id, identity.id) is not None
     if not allowed:
         raise HTTPException(404, "Patient not found")
@@ -119,17 +103,6 @@ def authorize_patient(db: Session, user: User, patient_id: str):
     if patient is None:
         raise HTTPException(404, "Patient not found")
     return patient
-
-
-def is_verified_professional(profile):
-    return (profile.verification_status == "verified" and profile.verified_at is not None
-            and bool(profile.verification_reference) and profile.crefito_region is not None
-            and profile.crefito_number is not None)
-
-
-def require_verified_professional(profile):
-    if not is_verified_professional(profile):
-        raise HTTPException(403, "Professional verification required")
 
 
 def request_link(db: Session, user: User, professional_id: str):
@@ -141,7 +114,7 @@ def request_link(db: Session, user: User, professional_id: str):
     if care.patient_active_link(db, patient.id):
         raise HTTPException(409, "End the active link before requesting another professional")
     professional = care.professional(db, professional_id)
-    if professional is None or not is_verified_professional(professional):
+    if professional is None:
         raise HTTPException(404, "Professional not found")
     existing = care.open_link(db, patient.id, professional_id)
     if existing:
@@ -165,7 +138,6 @@ def transition_link(db: Session, user: User, link_id: str, accept: bool, reject:
     care.lock_link(db, link)
     now = datetime.now(UTC)
     if accept:
-        require_verified_professional(identity)
         if link.status != LinkStatus.PENDING:
             raise HTTPException(409, "Link is not pending")
         active = care.patient_active_link(db, link.patient_id)
