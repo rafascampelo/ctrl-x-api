@@ -246,7 +246,8 @@ def test_expiration_and_session_binding(client):
     assert claims['exp'] - claims['iat'] == 900
     with next(app.dependency_overrides[get_db]()) as db:
         session = db.get(AuthSession, claims['jti'])
-        session.expires_at = datetime.now(UTC) + timedelta(seconds=30)
+        # Match login's whole-second timestamps so MySQL DATETIME(0) cannot round up.
+        session.expires_at = datetime.now(UTC).replace(microsecond=0) + timedelta(seconds=30)
         db.commit()
     remaining = client.get('/api/v1/auth/me')
     assert 0 < int(remaining.headers['x-session-remaining']) <= 30
