@@ -1,5 +1,9 @@
 # CREFITO: declaração e verificação
 
+Nesta branch, o CREFITO informado passa por validação de formato. O vínculo
+ativo autoriza o acesso ao paciente. O texto abaixo registra o histórico do
+fluxo de conferência suspenso no produto.
+
 Decisões aprovadas em 15/11/2026: MVP exclusivo para fisioterapeutas; nome,
 regional e número do CREFITO obrigatórios em novos cadastros profissionais;
 profissionais não verificados bloqueados para atuação clínica. Validação de
@@ -36,11 +40,40 @@ autorizado e data. Definir validade, revalidação, revogação e contestação 
 CREFITO declarado por outra conta. Encontrar um número não prova que o
 solicitante seja seu titular; documentos enviados exigem autenticação na fonte.
 
-O fluxo de revisão e sua autorização administrativa não estão implementados.
+O fluxo de comprovação de titularidade ainda precisa ser definido.
 Não usar UPDATE manual como atalho de liberação de contas reais. O procedimento
 e seus controles precisam ser aprovados antes de sua implementação.
 
-## Comportamento entregue
+## Conferência pública do CREFITO-3
+
+O cadastro e a edição dos dados profissionais criam uma solicitação. O
+operador autorizado consulta a inscrição no formulário público de São Paulo.
+As demais regionais recebem `needs_review`. Uma falha no portal deixa a
+solicitação pendente para nova tentativa.
+
+Use estes comandos em um terminal privado com acesso operacional ao banco.
+Use como `REVIEWER_UUID` o identificador interno atribuído ao operador. O
+comando `show` exibe a inscrição necessária à consulta.
+
+```text
+python -m scripts.review_crefito pending
+python -m scripts.review_crefito show REVIEW_UUID
+python -m scripts.review_crefito record REVIEW_UUID active --reviewer-id REVIEWER_UUID
+```
+
+Confira a regional, o número e a categoria de fisioterapeuta. Registre `active`
+ou `cancelled` quando a fonte mostrar essa situação explicitamente, `not_found`
+quando a fonte confirmar a ausência da inscrição, ou `needs_review` quando a
+resposta for ambígua. O banco guarda o identificador da solicitação, o operador,
+a fonte, a data UTC e o resultado. O acesso operacional ao banco define quem
+pode registrar resultados. Um resultado só pode ser registrado uma vez e
+somente para a versão atual do cadastro.
+
+Teste o fluxo com dados sintéticos localmente. Em uma conferência de produção,
+use uma inscrição de teste disponibilizada pelo conselho ou do próprio titular
+participando do teste. A conta de teste começa sem autorização clínica.
+
+## Autorização clínica
 
 Todos os novos cadastros e contas legadas ficam `unverified`. Não há transição
 de produção para `verified` nesta entrega. `verified_at` e

@@ -96,15 +96,15 @@ def test_patient_isolation_and_professional_read_only_revocation(client):
     assert history(client, patient).json()['items'] == [entry]
 
 
-def test_unverified_professional_cannot_read_diary(client):
+def test_professional_without_active_link_cannot_read_diary(client):
     account(client, 'PROFESSIONAL', 'unverified', verified=False)
     patient = account(client, 'PATIENT', 'patient')
     create(client)
     sign_in(client, 'unverified')
-    assert history(client, patient).status_code == 403
+    assert history(client, patient).status_code == 404
 
 
-def test_losing_verification_blocks_existing_active_link(client):
+def test_editing_professional_name_preserves_existing_active_link(client):
     professional = account(client, 'PROFESSIONAL', 'professional')
     patient = account(client, 'PATIENT', 'patient')
     create(client)
@@ -114,7 +114,7 @@ def test_losing_verification_blocks_existing_active_link(client):
     assert history(client, patient).status_code == 200
     assert client.patch('/api/v1/me', headers=ORIGIN,
                         json={'full_name': 'Changed Synthetic Name'}).status_code == 200
-    assert history(client, patient).status_code == 403
+    assert history(client, patient).status_code == 200
 
 
 @pytest.mark.parametrize('fields', [

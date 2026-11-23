@@ -1,6 +1,5 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import UTC, datetime
 
 import pytest
 from fastapi import HTTPException
@@ -12,6 +11,7 @@ from test_care import account, request, sign_in, transition
 
 from app.db.session import get_db
 from app.main import app
+from app.models.crefito_review import CrefitoReview
 from app.models.user import Professional
 from app.schemas.auth import Registration
 from app.services.auth import register
@@ -53,7 +53,10 @@ def test_registration_requires_crefito_and_preserves_auth_contract(client):
     profile = client.get('/api/v1/me').json()
     assert profile['crefito_number'] == '12345-F'
     assert profile['verification_status'] == 'unverified'
+    assert 'crefito_review' not in profile
     assert 'verification_reference' not in profile
+    with next(app.dependency_overrides[get_db]()) as db:
+        assert db.scalar(select(CrefitoReview.id)) is None
     duplicate = client.post('/api/v1/auth/register', headers=ORIGIN, json=payload(
         email='another-synthetic@example.test', crefito_number='12345-F',
     ))
@@ -61,37 +64,21 @@ def test_registration_requires_crefito_and_preserves_auth_contract(client):
     assert duplicate.json() == {'detail': 'Unable to register with these details'}
 
 
-def test_unverified_professional_cannot_receive_accept_or_read_patients(client):
+def test_declared_crefito_allows_access_only_during_active_link(client):
     professional = account(client, 'PROFESSIONAL', 'unverified', verified=False)
-    assert client.get('/api/v1/patients').status_code == 403
+    assert professional['verification_status'] == 'unverified'
+    assert client.get('/api/v1/patients').json()['items'] == []
     patient = account(client, 'PATIENT', 'patient')
-    assert request(client, professional).status_code == 404
-    # Establish a synthetic previously verified relationship, then invalidate verification.
-    trusted = account(client, 'PROFESSIONAL', 'trusted')
-    sign_in(client, 'patient')
-    link = request(client, trusted).json()['id']
-    sign_in(client, 'trusted')
+    link = request(client, professional).json()['id']
+    sign_in(client, 'unverified')
+    patient_url = f"/api/v1/patients/{patient['id']}"
+    assert client.get(patient_url).status_code == 404
     assert transition(client, link, 'accept').status_code == 200
-    assert client.patch('/api/v1/me', headers=ORIGIN, json={
-        'full_name': 'Changed identity',
-    }).json()['verification_status'] == 'unverified'
-    assert client.get(f"/api/v1/patients/{patient['id']}").status_code == 403
-    assert client.get('/api/v1/patients').status_code == 403
-    assert client.get('/api/v1/me/professional-links').status_code == 200
+    assert client.get(patient_url).status_code == 200
     sign_in(client, 'patient')
     assert transition(client, link, 'revoke').status_code == 204
-    # A pending request created before verification withdrawal cannot be accepted.
-    with next(app.dependency_overrides[get_db]()) as db:
-        row = db.get(Professional, trusted['id'])
-        row.verification_status = 'verified'
-        row.verified_at = datetime.now(UTC)
-        row.verification_reference = 'synthetic-test-review'
-        db.commit()
-    pending = request(client, trusted).json()['id']
-    sign_in(client, 'trusted')
-    client.patch('/api/v1/me', headers=ORIGIN, json={'full_name': 'Changed again'})
-    assert transition(client, pending, 'accept').status_code == 403
-    assert transition(client, pending, 'reject').status_code == 204
+    sign_in(client, 'unverified')
+    assert client.get(patient_url).status_code == 404
 
 
 def test_profile_registration_ownership_duplicates_and_no_self_verification(client):

@@ -47,7 +47,7 @@ def update_profile(db: Session, user: User, data: ProfileUpdate):
         profile.crefito_region = data.crefito_region
         profile.crefito_number = data.crefito_number
     if user.role == Role.PROFESSIONAL and (
-        fields or profile.full_name != data.full_name
+        bool(fields) or profile.full_name != data.full_name
     ):
         profile.verification_status = "unverified"
         profile.verified_at = None
@@ -82,7 +82,6 @@ def read_patient(db: Session, user: User, patient_id: str):
 
 def list_patients(db: Session, user: User, cursor: str | None, limit: int):
     professional = own_profile(db, user)
-    require_verified_professional(professional)
     patients = care.linked_patients(db, professional.id, cursor, limit)
     next_cursor = patients[limit - 1].id if len(patients) > limit else None
     for patient in patients[:limit]:
@@ -97,7 +96,6 @@ def authorize_patient(db: Session, user: User, patient_id: str):
     if user.role == Role.PATIENT:
         allowed = identity.id == patient_id
     else:
-        require_verified_professional(identity)
         allowed = care.active_link(db, patient_id, identity.id) is not None
     if not allowed:
         raise HTTPException(404, "Patient not found")
@@ -105,17 +103,6 @@ def authorize_patient(db: Session, user: User, patient_id: str):
     if patient is None:
         raise HTTPException(404, "Patient not found")
     return patient
-
-
-def is_verified_professional(profile):
-    return (profile.verification_status == "verified" and profile.verified_at is not None
-            and bool(profile.verification_reference) and profile.crefito_region is not None
-            and profile.crefito_number is not None)
-
-
-def require_verified_professional(profile):
-    if not is_verified_professional(profile):
-        raise HTTPException(403, "Professional verification required")
 
 
 def request_link(db: Session, user: User, professional_id: str):
@@ -127,7 +114,7 @@ def request_link(db: Session, user: User, professional_id: str):
     if care.patient_active_link(db, patient.id):
         raise HTTPException(409, "End the active link before requesting another professional")
     professional = care.professional(db, professional_id)
-    if professional is None or not is_verified_professional(professional):
+    if professional is None:
         raise HTTPException(404, "Professional not found")
     existing = care.open_link(db, patient.id, professional_id)
     if existing:
@@ -151,7 +138,6 @@ def transition_link(db: Session, user: User, link_id: str, accept: bool, reject:
     care.lock_link(db, link)
     now = datetime.now(UTC)
     if accept:
-        require_verified_professional(identity)
         if link.status != LinkStatus.PENDING:
             raise HTTPException(409, "Link is not pending")
         active = care.patient_active_link(db, link.patient_id)

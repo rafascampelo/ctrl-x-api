@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
 from app.models.auth import AuthEvent, AuthSession, LoginLimit
+from app.models.crefito_review import CrefitoReview
 from app.models.pain_entry import PainEntry
 from app.models.professional_link import CareAuditEvent, ProfessionalLink
 from app.models.user import Patient, Professional, User
@@ -43,7 +44,7 @@ def client(monkeypatch):
     app.dependency_overrides.clear()
     with Session(engine) as db:
         for model in (CareAuditEvent, PainEntry, ProfessionalLink, AuthEvent, AuthSession, LoginLimit,
-                      Patient, Professional, User):
+                      Patient, CrefitoReview, Professional, User):
             db.execute(delete(model))
         db.commit()
     engine.dispose()
