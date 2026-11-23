@@ -39,6 +39,10 @@ def test_patient_diary_persistence_updates_deletion_and_audit(client):
         stored = db.get(PainEntry, entry['id'])
         assert stored.description == PAYLOAD['description']
     assert history(client, patient).json()['items'] == [entry]
+    own = client.get('/api/v1/me/pain-entries')
+    assert own.status_code == 200
+    assert own.json()['items'] == [entry]
+    assert own.headers['cache-control'] == 'no-store'
     response = client.patch(f"/api/v1/pain-entries/{entry['id']}", headers=ORIGIN,
                             json={'intensity': 0, 'description': None})
     assert response.status_code == 200
@@ -73,12 +77,14 @@ def test_patient_isolation_and_professional_read_only_revocation(client):
     link = request(client, professional).json()['id']
     account(client, 'PATIENT', 'stranger')
     assert history(client, patient).status_code == 404
+    assert client.get('/api/v1/me/pain-entries', params={'patient_id': patient['id']}).json()['items'] == []
     for method in ('PATCH', 'DELETE'):
         kwargs = {'json': {'intensity': 1}} if method == 'PATCH' else {}
         assert client.request(method, f"/api/v1/pain-entries/{entry['id']}",
                               headers=ORIGIN, **kwargs).status_code == 404
     sign_in(client, 'professional')
     assert history(client, patient).status_code == 404
+    assert client.get('/api/v1/me/pain-entries').status_code == 403
     assert transition(client, link, 'accept').status_code == 200
     assert history(client, patient).json()['items'] == [entry]
     assert client.post('/api/v1/me/pain-entries', headers=ORIGIN,
@@ -153,6 +159,7 @@ def test_pagination_ties_and_date_filter(client):
         assert response.status_code == 200
         assert response.headers['cache-control'] == 'no-store'
         page = response.json()
+        assert client.get('/api/v1/me/pain-entries', params=params).json() == page
         found.extend(item['id'] for item in page['items'])
         if page['next_cursor'] is None:
             break
@@ -168,6 +175,7 @@ def test_pagination_ties_and_date_filter(client):
 
 @pytest.mark.parametrize('method,path,payload', [
     ('POST', '/me/pain-entries', PAYLOAD),
+    ('GET', '/me/pain-entries', None),
     ('GET', f'/patients/{uuid4()}/pain-entries', None),
     ('PATCH', f'/pain-entries/{uuid4()}', {'intensity': 1}),
     ('DELETE', f'/pain-entries/{uuid4()}', None),

@@ -99,6 +99,7 @@ Erros de validação omitem os valores recebidos.
 | Método e rota | Entrada | Sucesso |
 | --- | --- | --- |
 | `POST /me/pain-entries` | Paciente: `{region, intensity, description?, occurred_at?}` | 201, entrada persistida |
+| `GET /me/pain-entries` | Paciente da sessão, com `limit`, `cursor`, `start`, `end` opcionais | 200, `{items, next_cursor}` |
 | `PATCH /pain-entries/{entry_id}` | Paciente dono: subconjunto não vazio dos campos de criação | 200, entrada atualizada |
 | `DELETE /pain-entries/{entry_id}` | Paciente dono; sem corpo | 204 |
 | `GET /patients/{patient_id}/pain-entries` | Paciente dono ou profissional com vínculo ativo; `limit`, `cursor`, `start`, `end` opcionais | 200, `{items, next_cursor}` |

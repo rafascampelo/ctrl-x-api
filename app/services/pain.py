@@ -52,6 +52,17 @@ def change_entry(db: Session, user: User, entry_id: str, data: PainUpdate | None
 def list_entries(db: Session, user: User, patient_id: str, start: datetime | None,
                  end: datetime | None, cursor: str | None, limit: int):
     authorize_patient(db, user, patient_id)
+    return _list_entries(db, user, patient_id, start, end, cursor, limit)
+
+
+def list_own_entries(db: Session, user: User, start: datetime | None, end: datetime | None,
+                     cursor: str | None, limit: int):
+    patient = patient_owner(db, user)
+    return _list_entries(db, user, patient.id, start, end, cursor, limit)
+
+
+def _list_entries(db: Session, user: User, patient_id: str, start: datetime | None,
+                  end: datetime | None, cursor: str | None, limit: int):
     start = utc(start) if start is not None else None
     end = utc(end) if end is not None else None
     if start is not None and end is not None and start >= end:

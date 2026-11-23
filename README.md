@@ -7,7 +7,8 @@ região, descrição opcional e instante UTC. Paciente pode criar, editar e excl
 profissional pode ler somente com vínculo ativo. Histórico paginado
 com filtros por período, auditoria sem conteúdo clínico e migration
 `0007_pain_entries`. Veja [contrato HTTP](docs/frontend-contracts.md#diário-de-dor).
-Formulário e histórico do frontend ficam para uma entrega posterior.
+A tela do paciente usa `GET /api/v1/me/pain-entries` para o histórico e
+`POST /api/v1/me/pain-entries` para registrar a dor.
 
 ## Perfis e vínculos profissionais
 
