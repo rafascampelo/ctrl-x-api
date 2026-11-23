@@ -6,7 +6,6 @@ import pytest
 
 from scripts.deploy_railway import (
     PRODUCTION_PROJECT_ID,
-    check_health,
     deployment_id_from_upload,
     main,
     railway,
@@ -67,33 +66,6 @@ def test_cli_nonzero_is_a_publication_failure():
         pytest.raises(RuntimeError, match="exit 1"),
     ):
         railway("up", "--detach")
-
-
-def test_failing_public_health_is_not_accepted():
-    with (
-        patch("scripts.deploy_railway.urlopen", side_effect=TimeoutError),
-        patch("scripts.deploy_railway.time.sleep"),
-        pytest.raises(RuntimeError, match="GET /health failed after retries"),
-    ):
-        check_health("https://api.example.test")
-
-
-def test_public_health_retries_transient_network_errors_then_accepts_health():
-    from urllib.error import URLError
-
-    response = type("HealthResponse", (), {
-        "status": 200,
-        "__enter__": lambda self: self,
-        "__exit__": lambda self, *args: None,
-    })()
-    response.read = lambda: b'{"status":"ok"}'
-    with (
-        patch("scripts.deploy_railway.urlopen",
-              side_effect=[URLError("temporary DNS failure"), response]) as request,
-        patch("scripts.deploy_railway.time.sleep"),
-    ):
-        check_health("https://api.example.test")
-        assert request.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -185,23 +157,29 @@ def configure_release(monkeypatch):
 
 
 @pytest.mark.parametrize('failure', [False, True])
-def test_release_is_explicit_and_failed_predeploy_blocks_acceptance(monkeypatch, failure):
+def test_release_records_success_only_after_railway_confirmation(monkeypatch, tmp_path, failure):
     configure_release(monkeypatch)
+    summary = tmp_path / 'summary.md'
+    monkeypatch.setenv('GITHUB_STEP_SUMMARY', str(summary))
+    monkeypatch.setenv('GITHUB_SHA', 'synthetic-commit')
     with (
         patch('scripts.deploy_railway.verify_api_target') as verify,
         patch('scripts.deploy_railway.railway',
               return_value=json.dumps({'deploymentId': DEPLOYMENT})) as cli,
         patch('scripts.deploy_railway.wait_for_deployment',
-              side_effect=RuntimeError('pre-deploy failed') if failure else None),
-        patch('scripts.deploy_railway.check_health') as health,
+              side_effect=RuntimeError('pre-deploy failed') if failure else None) as wait,
     ):
         if failure:
             with pytest.raises(RuntimeError, match='pre-deploy failed'):
                 main()
-            health.assert_not_called()
+            assert not summary.exists()
         else:
             main()
-            health.assert_called_once()
+            assert summary.read_text(encoding='utf-8') == (
+                'Railway reported SUCCESS for production commit `synthetic-commit`\n\n'
+                f'Railway deployment: `{DEPLOYMENT}`\n'
+            )
+        wait.assert_called_once_with(DEPLOYMENT, DEPLOYMENT, DEPLOYMENT, PRODUCTION_PROJECT_ID)
         verify.assert_called_once_with(PRODUCTION_PROJECT_ID, DEPLOYMENT, DEPLOYMENT)
         cli.assert_called_once_with(
             'up', '--detach', '--json', '--project', PRODUCTION_PROJECT_ID,
