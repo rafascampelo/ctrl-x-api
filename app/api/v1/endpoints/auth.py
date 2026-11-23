@@ -31,6 +31,20 @@ def _cookie_samesite() -> str:
     return "lax" if get_settings().app_env == "development" else "none"
 
 
+def _set_access_cookie(response: Response, token: str, seconds: int) -> None:
+    response.set_cookie(
+        COOKIE_NAME, token, max_age=seconds, httponly=True,
+        secure=get_settings().app_env != "development", samesite=_cookie_samesite(), path="/",
+    )
+
+
+def _set_session_remaining(response: Response, expires_at: datetime) -> int:
+    seconds = max(0, ceil((expires_at - datetime.now(UTC)).total_seconds()))
+    response.headers["Cache-Control"] = "no-store"
+    response.headers[SESSION_REMAINING_HEADER] = str(seconds)
+    return seconds
+
+
 @router.post("/register", response_model=UserResponse, status_code=201,
              dependencies=[Depends(require_trusted_origin)], responses={
                  403: {"model": ErrorResponse, "description": "Missing or untrusted Origin"},
@@ -55,10 +69,7 @@ def register(data: Registration, db: Annotated[Session, Depends(get_db)]):
              })
 def login(data: Credentials, response: Response, db: Annotated[Session, Depends(get_db)]):
     user = auth.authenticate(db, data)
-    response.set_cookie(
-        COOKIE_NAME, auth.start_session(db, user), max_age=SESSION_DURATION_SECONDS, httponly=True,
-        secure=get_settings().app_env != "development", samesite=_cookie_samesite(), path="/",
-    )
+    _set_access_cookie(response, auth.start_session(db, user), SESSION_DURATION_SECONDS)
     response.headers["Cache-Control"] = "no-store"
     response.headers[SESSION_REMAINING_HEADER] = str(SESSION_DURATION_SECONDS)
     return user
@@ -73,10 +84,29 @@ def me(request: Request, response: Response, user: Annotated[User, Depends(curre
        db: Annotated[Session, Depends(get_db)]):
     audit(db, "session_viewed", user.id)
     db.commit()
-    response.headers["Cache-Control"] = "no-store"
-    remaining = request.state.auth_session_expires_at - datetime.now(UTC)
-    response.headers[SESSION_REMAINING_HEADER] = str(max(0, ceil(remaining.total_seconds())))
+    _set_session_remaining(response, request.state.auth_session_expires_at)
     return user
+
+
+@router.post("/refresh", status_code=204, responses={
+    204: {"headers": {
+        "Set-Cookie": {"schema": {"type": "string"}},
+        SESSION_REMAINING_HEADER: {"schema": {"type": "integer"}},
+    }},
+    401: {"model": ErrorResponse, "description": "Missing, expired, invalid or revoked session"},
+    403: {"model": ErrorResponse, "description": "Missing or untrusted Origin"},
+})
+def refresh(request: Request, user: Annotated[User, Depends(current_user)],
+            db: Annotated[Session, Depends(get_db)]):
+    token, expires_at = auth.renew_session(
+        db, user, request.state.auth_session_id, request.state.auth_token_expires_at,
+        request.state.auth_session_started_at,
+    )
+    response = Response(status_code=204)
+    seconds = _set_session_remaining(response, expires_at)
+    if token is not None:
+        _set_access_cookie(response, token, seconds)
+    return response
 
 
 @router.post("/logout", status_code=204,

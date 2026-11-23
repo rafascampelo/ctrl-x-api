@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -18,16 +18,19 @@ password_hash = PasswordHash.recommended()
 DUMMY_HASH = password_hash.hash("not-a-real-password-for-timing")
 COOKIE_NAME = "ctrlx_access"
 SESSION_DURATION_SECONDS = 900
+SESSION_RENEWAL_WINDOW_SECONDS = 120
+SESSION_MAX_AGE_SECONDS = 8 * 60 * 60
 SESSION_REMAINING_HEADER = "X-Session-Remaining"
 cookie_auth = APIKeyCookie(name=COOKIE_NAME, auto_error=False)
 
 
-def create_access_token(user: User, session: AuthSession) -> str:
+def create_access_token(user: User, session: AuthSession, issued_at: datetime,
+                        started_at: datetime) -> str:
     settings = get_settings()
-    now = session.expires_at - timedelta(seconds=SESSION_DURATION_SECONDS)
     return jwt.encode(
         {"sub": user.id, "iss": settings.jwt_issuer, "aud": settings.jwt_audience,
-         "iat": now, "exp": session.expires_at, "jti": session.id},
+         "iat": issued_at, "exp": session.expires_at, "jti": session.id,
+         "session_started_at": int(started_at.timestamp())},
         settings.secret_key.get_secret_value(), algorithm="HS256",
     )
 
@@ -49,14 +52,18 @@ def current_user(request: Request, db: Annotated[Session, Depends(get_db)],
         )
         user_id = str(UUID(claims["sub"]))
         session_id = str(UUID(claims["jti"]))
-    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError):
+        token_expires_at = datetime.fromtimestamp(claims["exp"], UTC)
+        started_at = datetime.fromtimestamp(claims.get("session_started_at", claims["iat"]), UTC)
+    except (jwt.InvalidTokenError, ValueError, TypeError, KeyError, OverflowError, OSError):
         raise error from None
     session = db.get(AuthSession, session_id)
     if (session is None or session.user_id != user_id or session.revoked_at is not None
             or utc(session.expires_at) <= datetime.now(UTC)):
         raise error
     request.state.auth_session_id = session.id
-    request.state.auth_session_expires_at = utc(session.expires_at)
+    request.state.auth_session_expires_at = min(utc(session.expires_at), token_expires_at)
+    request.state.auth_token_expires_at = token_expires_at
+    request.state.auth_session_started_at = started_at
     user = db.get(User, user_id)
     if user is None:
         raise error
