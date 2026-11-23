@@ -36,7 +36,7 @@ Perfil tem `{id, user_id, role, full_name}`. `id` identifica o perfil de pacient
 ou profissional. `user_id` identifica a conta e corresponde a `id` de `/auth/me`.
 Usar o ID de perfil nos parâmetros `patient_id` e `professional_id`.
 O profissional também recebe `crefito_region`, `crefito_number`,
-`verification_status`. Nome e CREFITO são editáveis.
+`account_status` e `verification_status`. Nome e CREFITO são editáveis.
 O paciente não pode enviar campos profissionais. Campos adicionais são rejeitados.
 
 Novo cadastro `PROFESSIONAL` exige regional (inteiro 1–22) e número (string de
@@ -55,10 +55,12 @@ regional e número juntos, não nulos. Colisão retorna 409
 Exemplo de resposta profissional, com identificadores fictícios:
 
 ```json
-{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified"}
+{"id":"00000000-0000-0000-0000-000000000001","user_id":"00000000-0000-0000-0000-000000000002","role":"PROFESSIONAL","full_name":"Profissional Fictício","account_status":"active","crefito_region":3,"crefito_number":"12345-F","verification_status":"unverified"}
 ```
 
 O CREFITO é declarado pelo profissional e passa por validação de formato.
+A conta profissional fica ativa desde o cadastro. O perfil retorna
+`account_status: "active"` em `GET /me` e `PATCH /me`.
 O aceite exige uma solicitação pendente destinada ao profissional. Leitura
 de dados do paciente pelo profissional exige vínculo ativo.
 `verification_status` é um campo legado de leitura que a interface pode ignorar.

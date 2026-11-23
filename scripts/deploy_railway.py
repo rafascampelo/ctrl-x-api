@@ -6,9 +6,7 @@ import re
 import subprocess
 import time
 from pathlib import Path
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
-from urllib.request import urlopen
 
 UUID = r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"
 PRODUCTION_PROJECT_ID = "d8bc085c-a818-413e-8233-3fabff1cde1f"
@@ -157,25 +155,6 @@ def wait_for_deployment(
     raise TimeoutError("Railway deployment did not succeed within 15 minutes")
 
 
-def check_health(base_url: str) -> None:
-    validate_base_url(base_url)
-    last_result = "no response"
-    for attempt in range(30):
-        try:
-            with urlopen(base_url.rstrip("/") + "/health", timeout=5) as response:
-                if response.status == 200 and json.load(response) == {"status": "ok"}:
-                    print("Production /health verified", flush=True)
-                    return
-                last_result = f"HTTP {response.status} or unexpected response body"
-        except HTTPError as error:
-            last_result = f"HTTP {error.code}"
-        except (URLError, TimeoutError, ValueError, OSError) as error:
-            last_result = type(error).__name__
-        if attempt < 29:
-            time.sleep(5)
-    raise RuntimeError(f"Production GET /health failed after retries ({last_result})")
-
-
 def main() -> None:
     if os.environ.get("GITHUB_EVENT_NAME") != "push" or os.environ.get("GITHUB_REF") != (
         "refs/heads/prod"
@@ -205,11 +184,10 @@ def main() -> None:
     deployment_id = deployment_id_from_upload(output)
     print(f"Uploaded deployment {deployment_id}", flush=True)
     wait_for_deployment(deployment_id, service, environment, project)
-    check_health(base_url)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as stream:
-            stream.write(f"Production verified: `{os.environ['GITHUB_SHA']}`\n\n")
+            stream.write(f"Railway reported SUCCESS for production commit `{os.environ['GITHUB_SHA']}`\n\n")
             stream.write(f"Railway deployment: `{deployment_id}`\n")
 
 

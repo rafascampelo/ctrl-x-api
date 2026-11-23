@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
@@ -43,6 +44,7 @@ class ProfileResponse(BaseModel):
 
 
 class ProfessionalProfileResponse(ProfileResponse):
+    account_status: Literal["active"] = "active"
     crefito_region: int | None
     crefito_number: str | None
     verification_status: str
