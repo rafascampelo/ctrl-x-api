@@ -264,6 +264,82 @@ def test_expiration_and_session_binding(client):
     assert client.post('/api/v1/auth/logout', headers=ORIGIN).status_code == 204
 
 
+def prepare_session_for_renewal(client, *, remaining: int, started_seconds_ago: int):
+    register(client)
+    login(client)
+    settings = get_settings()
+    key = settings.secret_key.get_secret_value()
+    claims = jwt.decode(client.cookies.get(COOKIE_NAME), key, algorithms=['HS256'],
+                        audience=settings.jwt_audience, issuer=settings.jwt_issuer)
+    now = datetime.now(UTC).replace(microsecond=0)
+    expires_at = now + timedelta(seconds=remaining)
+    claims['exp'] = int(expires_at.timestamp())
+    claims['session_started_at'] = int(now.timestamp()) - started_seconds_ago
+    with next(app.dependency_overrides[get_db]()) as db:
+        session = db.get(AuthSession, claims['jti'])
+        session.expires_at = expires_at
+        db.commit()
+    return jwt.encode(claims, key, algorithm='HS256'), key, claims
+
+
+def test_refresh_extends_same_session_only_once_and_logout_revokes_both_tokens(client):
+    token, key, claims = prepare_session_for_renewal(client, remaining=60, started_seconds_ago=840)
+    original = {**ORIGIN, 'Cookie': f'{COOKIE_NAME}={token}'}
+    refresh = client.post('/api/v1/auth/refresh', headers=original)
+    assert refresh.status_code == 204
+    assert 890 <= int(refresh.headers['x-session-remaining']) <= 900
+    assert refresh.headers['cache-control'] == 'no-store'
+    assert 'httponly' in refresh.headers['set-cookie'].lower()
+    renewed = jwt.decode(refresh.cookies.get(COOKIE_NAME), key, options={'verify_aud': False},
+                         algorithms=['HS256'])
+    assert renewed['jti'] == claims['jti']
+    assert renewed['session_started_at'] == claims['session_started_at']
+    assert renewed['exp'] - renewed['iat'] == 900
+
+    previous_me = client.get('/api/v1/auth/me', headers=original)
+    assert 0 < int(previous_me.headers['x-session-remaining']) <= 60
+    repeated = client.post('/api/v1/auth/refresh', headers=original)
+    assert repeated.status_code == 204
+    concurrent_token = jwt.decode(repeated.cookies.get(COOKIE_NAME), key, options={'verify_aud': False},
+                                  algorithms=['HS256'])
+    assert concurrent_token['exp'] == renewed['exp']
+    assert client.post('/api/v1/auth/logout', headers=ORIGIN).status_code == 204
+    assert client.post('/api/v1/auth/refresh', headers=original).status_code == 401
+    assert client.post('/api/v1/auth/refresh', headers={
+        **ORIGIN, 'Cookie': f'{COOKIE_NAME}={refresh.cookies.get(COOKIE_NAME)}',
+    }).status_code == 401
+
+
+def test_refresh_respects_absolute_session_limit(client):
+    token, key, claims = prepare_session_for_renewal(client, remaining=30,
+                                                    started_seconds_ago=8 * 60 * 60 - 60)
+    response = client.post('/api/v1/auth/refresh', headers={**ORIGIN, 'Cookie': f'{COOKIE_NAME}={token}'})
+    assert response.status_code == 204
+    renewed = jwt.decode(response.cookies.get(COOKIE_NAME), key, options={'verify_aud': False},
+                         algorithms=['HS256'])
+    assert renewed['exp'] == claims['session_started_at'] + 8 * 60 * 60
+    assert 'set-cookie' not in client.post('/api/v1/auth/refresh', headers=ORIGIN).headers
+
+
+def test_refresh_rejects_missing_expired_or_untrusted_sessions_and_skips_early_renewal(client):
+    assert client.post('/api/v1/auth/refresh', headers=ORIGIN).status_code == 401
+    register(client)
+    login(client)
+    assert client.post('/api/v1/auth/refresh').status_code == 403
+    early = client.post('/api/v1/auth/refresh', headers=ORIGIN)
+    assert early.status_code == 204
+    assert 'set-cookie' not in early.headers
+    settings = get_settings()
+    key = settings.secret_key.get_secret_value()
+    claims = jwt.decode(client.cookies.get(COOKIE_NAME), key, options={'verify_aud': False},
+                        algorithms=['HS256'])
+    claims['exp'] = datetime.now(UTC) - timedelta(seconds=1)
+    expired = jwt.encode(claims, key, algorithm='HS256')
+    assert client.post('/api/v1/auth/refresh', headers={
+        **ORIGIN, 'Cookie': f'{COOKIE_NAME}={expired}',
+    }).status_code == 401
+
+
 def test_audit_has_no_credentials_or_tokens(client):
     from sqlalchemy import select
     register(client)

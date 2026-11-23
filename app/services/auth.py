@@ -8,12 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.security import (
     DUMMY_HASH,
     SESSION_DURATION_SECONDS,
+    SESSION_MAX_AGE_SECONDS,
+    SESSION_RENEWAL_WINDOW_SECONDS,
     create_access_token,
     password_hash,
 )
 from app.models.auth import AuthSession
 from app.models.user import Patient, Professional, Role, User
-from app.repositories.auth import audit, reserve_login_attempt
+from app.repositories.auth import audit, reserve_login_attempt, utc
 from app.repositories.users import by_email
 from app.schemas.auth import Credentials, Registration
 
@@ -60,7 +62,35 @@ def start_session(db: Session, user: User) -> str:
         expires_at=issued_at + timedelta(seconds=SESSION_DURATION_SECONDS),
     )
     db.add(session)
-    token = create_access_token(user, session)
+    token = create_access_token(user, session, issued_at, issued_at)
     audit(db, "login_succeeded", user.id)
     db.commit()
     return token
+
+
+def renew_session(db: Session, user: User, session_id: str, token_expires_at: datetime,
+                  started_at: datetime) -> tuple[str | None, datetime]:
+    # Lock and reload after authentication so concurrent renewals or logout share the same state.
+    session = db.get(AuthSession, session_id, with_for_update=True, populate_existing=True)
+    now = datetime.now(UTC)
+    if (session is None or session.user_id != user.id or session.revoked_at is not None
+            or min(utc(session.expires_at), token_expires_at) <= now):
+        raise HTTPException(401, "Not authenticated")
+
+    expires_at = utc(session.expires_at)
+    issued_at = now.replace(microsecond=0)
+    if expires_at - now <= timedelta(seconds=SESSION_RENEWAL_WINDOW_SECONDS):
+        renewal = min(
+            issued_at + timedelta(seconds=SESSION_DURATION_SECONDS),
+            started_at + timedelta(seconds=SESSION_MAX_AGE_SECONDS),
+        )
+        if renewal > expires_at:
+            expires_at = session.expires_at = renewal
+            audit(db, "session_renewed", user.id)
+
+    # A second tab with the previous JWT can receive the expiry already set by the first.
+    token = None
+    if expires_at > token_expires_at:
+        token = create_access_token(user, session, issued_at, started_at)
+    db.commit()
+    return token, expires_at

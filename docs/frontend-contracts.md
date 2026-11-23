@@ -11,12 +11,16 @@ As respostas autenticadas possuem `Cache-Control: no-store`.
 | `POST /auth/register` | `email`, `password` (12–128 caracteres), `full_name`, `role`; profissional exige `crefito_region` e `crefito_number` | 201, `{id, email, role}` |
 | `POST /auth/login` | `email`, `password` | 200, `{id, email, role}` e cookie `ctrlx_access` |
 | `GET /auth/me` | Cookie | 200, `{id, email, role}` |
+| `POST /auth/refresh` | Cookie válido e Origin | 204, tempo restante e cookie atualizado quando elegível |
 | `POST /auth/logout` | Cookie e Origin | 204, revoga sessão e remove cookie |
 
 Cookie HttpOnly, host-only, SameSite=None e Secure fora de desenvolvimento;
 development usa SameSite=Lax sem Secure. Validade de 900 segundos.
-`POST /auth/login` e `GET /auth/me` expõem `X-Session-Remaining` ao frontend
-com os segundos restantes da sessão. Consultar `/auth/me` não renova o prazo.
+`POST /auth/login`, `GET /auth/me` e `POST /auth/refresh` expõem
+`X-Session-Remaining` com os segundos restantes. A renovação é solicitada
+pelo frontend nos últimos dois minutos, quando há atividade recente em uma
+tela privada. Ela estende a mesma sessão por até 15 minutos, com limite
+total de oito horas desde o login. A API exige um JWT ainda válido.
 Na expiração ou ao receber 401 em uma sessão autenticada, o frontend descarta
 o cache privado em memória e volta ao login. Login limitado a cinco
 tentativas por conta em 300 segundos, com 429 e `Retry-After`.
