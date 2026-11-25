@@ -172,7 +172,16 @@ uv pip install --python .venv/Scripts/python.exe -r requirements.lock
 
 As dependências Python de OCR não instalam o executável Tesseract. Docker Desktop
 e Tesseract são instalações separadas no Windows. A autenticação usa SQLAlchemy
-e MySQL. O processamento de documentos será implementado posteriormente.
+e MySQL.
+
+Os documentos usam diretório privado definido por `UPLOAD_DIR`
+(padrão local `private_uploads`). Em um ambiente com contêineres, configure
+esse diretório em armazenamento persistente e acessível a todas as instâncias
+que servem a API. `TESSERACT_CMD` é o caminho do executável e `OCR_LANG`
+seleciona os idiomas (padrão `por+eng`). O resultado do OCR fica pendente de
+revisão humana. PDFs digitalizados exigem transcrição manual. O processamento
+automático limita a extração a 20 páginas, 20.000 caracteres e 20 segundos
+por documento. Veja o [contrato de documentos](docs/frontend-contracts.md#documentos-privados-e-ocr).
 
 ## Prerequisites (Windows)
 - Python 3.12+, Docker Desktop with Linux containers / Compose v2
