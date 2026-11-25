@@ -1,3 +1,4 @@
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from uuid import UUID
@@ -65,6 +66,7 @@ def test_private_upload_download_and_review(client, storage):
     row = response.json()
     assert row["patient_id"] == patient["id"]
     assert row["uploaded_by"] == patient["user_id"]
+    assert datetime.fromisoformat(row["created_at"]).microsecond == 0
     assert row["ocr_status"] == "completed"
     assert row["extracted_text"] == "Synthetic extraction"
     assert row["is_verified"] is False
@@ -87,6 +89,7 @@ def test_private_upload_download_and_review(client, storage):
     assert verified.json()["extracted_text"] == "Reviewed synthetic text"
     assert verified.json()["is_verified"] is True
     assert verified.json()["verified_at"].endswith("Z")
+    assert datetime.fromisoformat(verified.json()["verified_at"]).microsecond == 0
     assert client.get(DOCUMENTS).json()["items"] == [verified.json()]
     assert client.get(f"/private_uploads/{stored.name}").status_code == 404
 
