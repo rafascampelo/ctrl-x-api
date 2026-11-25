@@ -1,6 +1,7 @@
 from functools import lru_cache
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -16,3 +17,11 @@ def get_engine():
 def get_db():
     with Session(get_engine(), expire_on_commit=False) as session:
         yield session
+
+
+def database_ready() -> bool:
+    try:
+        with get_engine().connect() as connection:
+            return connection.scalar(text("SELECT 1")) == 1
+    except (SQLAlchemyError, ValueError):
+        return False
