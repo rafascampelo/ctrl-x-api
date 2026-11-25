@@ -154,7 +154,11 @@ As migrações agora estão inicializadas; defina `DATABASE_URL` antes de execut
 
 O desenho inicial está em [docs/architecture.md](docs/architecture.md) e
 [docs/api-design.md](docs/api-design.md). As pastas por camada estão reservadas;
-a API implementa `/health` e autenticação. O Alembic mantém migrations
+a API oferece `/health` para liveness e `/health/db` para verificar se
+consegue executar `SELECT 1` no banco configurado. `/health/db` retorna 200
+quando a consulta funciona e 503 quando o banco está indisponível, sem
+expor detalhes de conexão. A verificação de versão do schema continua sob
+responsabilidade dos comandos de migrations. O Alembic mantém migrations
 versionadas e a CI valida upgrade, drift e downgrade em MySQL 8.4 isolado.
 
 Alternativa de preparação com uv (sem ativar o ambiente):
@@ -168,7 +172,16 @@ uv pip install --python .venv/Scripts/python.exe -r requirements.lock
 
 As dependências Python de OCR não instalam o executável Tesseract. Docker Desktop
 e Tesseract são instalações separadas no Windows. A autenticação usa SQLAlchemy
-e MySQL. O processamento de documentos será implementado posteriormente.
+e MySQL.
+
+Os documentos usam diretório privado definido por `UPLOAD_DIR`
+(padrão local `private_uploads`). Em um ambiente com contêineres, configure
+esse diretório em armazenamento persistente e acessível a todas as instâncias
+que servem a API. `TESSERACT_CMD` é o caminho do executável e `OCR_LANG`
+seleciona os idiomas (padrão `por+eng`). O resultado do OCR fica pendente de
+revisão humana. PDFs digitalizados exigem transcrição manual. O processamento
+automático limita a extração a 20 páginas, 20.000 caracteres e 20 segundos
+por documento. Veja o [contrato de documentos](docs/frontend-contracts.md#documentos-privados-e-ocr).
 
 ## Prerequisites (Windows)
 - Python 3.12+, Docker Desktop with Linux containers / Compose v2

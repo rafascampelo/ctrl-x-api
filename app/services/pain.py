@@ -61,23 +61,25 @@ def list_own_entries(db: Session, user: User, start: datetime | None, end: datet
     return _list_entries(db, user, patient.id, start, end, cursor, limit)
 
 
-def _list_entries(db: Session, user: User, patient_id: str, start: datetime | None,
-                  end: datetime | None, cursor: str | None, limit: int):
-    start = utc(start) if start is not None else None
-    end = utc(end) if end is not None else None
-    if start is not None and end is not None and start >= end:
-        raise HTTPException(422, "Invalid date range")
-    position = None
+def cursor_position(cursor: str | None):
     if cursor:
         try:
             timestamp, entry_id = cursor.split("|", 1)
             timestamp = datetime.fromisoformat(timestamp)
             if timestamp.tzinfo is None:
                 raise ValueError
-            position = (utc(timestamp), str(UUID(entry_id)))
+            return utc(timestamp), str(UUID(entry_id))
         except (ValueError, TypeError):
             raise HTTPException(422, "Invalid cursor") from None
-    rows = pain.entries(db, patient_id, start, end, position, limit)
+
+
+def _list_entries(db: Session, user: User, patient_id: str, start: datetime | None,
+                  end: datetime | None, cursor: str | None, limit: int):
+    start = utc(start) if start is not None else None
+    end = utc(end) if end is not None else None
+    if start is not None and end is not None and start >= end:
+        raise HTTPException(422, "Invalid date range")
+    rows = pain.entries(db, patient_id, start, end, cursor_position(cursor), limit)
     items = [PainResponse.model_validate(entry) for entry in rows[:limit]]
     next_cursor = None
     if len(rows) > limit:

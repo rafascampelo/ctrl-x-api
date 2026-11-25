@@ -159,11 +159,14 @@ local e terminam antes da meia-noite seguinte ao período solicitado. Quando
 omitido, `timezone` usa UTC. O frontend usa o fuso do navegador. Cada evento
 de dor usa o UUID, a região, a intensidade e o instante UTC da entrada do
 diário. O cursor é opaco e deve ser reenviado com o mesmo filtro. As
-categorias `exercise` e `clinical_record` retornam lista vazia até que
-essas fontes sejam integradas.
+categoria `clinical_record` projeta prontuários finalizados pela data de
+finalização. O evento inclui região e intensidade quando informada.
+A categoria `exercise` projeta conclusões de rotinas prescritas.
 
 O calendário retorna apenas datas com registros, com `date` e
-`pain_count`. O dashboard usa `pain.count`, `pain.average_intensity` e
+`pain_count`, com `clinical_record_count` nos dias com finalizações e
+`exercise_count` nos dias com conclusões de exercícios.
+O dashboard usa `pain.count`, `pain.average_intensity` e
 `pain.latest_intensity` do mesmo mês. Em meses sem registros, a média e a
 última intensidade são nulas. Uma intensidade registrada de zero é válida.
 
@@ -171,11 +174,68 @@ A migration `0007_pain_entries` cria a entidade e um índice por paciente/data/I
 sem tabelas adicionais de timeline ou calendário. `care_audit_events` registra
 `pain_entry_created`, `pain_entries_viewed`, `pain_entry_updated` e
 `pain_entry_deleted`, contendo somente ator, paciente, recurso, ação e instante.
-Frontend não faz parte desta entrega.
 
-## Próximos incrementos P0
+## Prontuários digitais
 
-Prontuários nativos com finalização e adendos e timeline
-longitudinal ainda dependem de implementação. As rotas propostas estão em
-`api-design.md`. A existência de vínculo profissional não concede acesso
-automático a documentos.
+| Endpoint | Permissão | Resposta |
+| --- | --- | --- |
+| `POST /clinical-records` | Profissional com vínculo ativo, informa `patient_id` e campos clínicos | 201, rascunho |
+| `GET /clinical-records` | Paciente da sessão, ou profissional com vínculo ativo e filtro `patient_id` | 200, `{items, next_cursor}` |
+| `GET /clinical-records/{record_id}` | Paciente dono ou profissional com vínculo ativo, respeitando a visibilidade do rascunho | 200, prontuário com adendos |
+| `PATCH /clinical-records/{record_id}` | Profissional autor com vínculo ativo, envia campos clínicos a atualizar | 200, rascunho atualizado |
+| `POST /clinical-records/{record_id}/finalize` | Profissional autor com vínculo ativo | 200, prontuário finalizado |
+| `POST /clinical-records/{record_id}/amendments` | Profissional com vínculo ativo, envia `{reason, content}` | 201, adendo |
+
+A listagem aceita `limit` e `cursor`. Os campos clínicos são
+`chief_complaint`, `anamnesis`, `physical_assessment`, `body_region`,
+`pain_intensity` (opcional, inteiro de 0 a 10), `functional_limitations`,
+`therapeutic_goals`, `care_plan` e `notes` (opcional).
+
+Rascunhos ficam visíveis ao autor enquanto houver vínculo ativo. O paciente
+mantém acesso aos próprios registros finalizados após a revogação. O
+profissional do vínculo atual pode acrescentar um adendo, que tem autoria
+própria. O conteúdo finalizado permanece imutável e uma tentativa de
+alterá-lo pelo autor retorna 409. A API audita leitura, criação, edição,
+finalização e adendos sem guardar conteúdo clínico na auditoria.
+
+## Prescrições de exercícios
+
+| Endpoint | Permissão | Resposta |
+| --- | --- | --- |
+| `POST /patients/{patient_id}/prescriptions` | Profissional com vínculo ativo | 201, prescrição |
+| `GET /patients/{patient_id}/prescriptions` | Profissional com vínculo ativo | 200, `{items, next_cursor}` |
+| `GET /me/prescriptions` | Paciente da sessão | 200, `{items, next_cursor}` |
+| `POST /me/prescriptions/{prescription_id}/completions` | Paciente dono, envia `{notes?}` | 201, conclusão |
+
+Criação aceita `{title, frequency, clinical_notes?, exercises}`, com um a
+50 exercícios no formato `{name, sets, reps, notes?}`. `frequency`
+contém a agenda recomendada pelo profissional, em texto. Cada conclusão
+registra o momento UTC da requisição. As listagens aceitam `limit` e
+`cursor` e incluem exercícios, conclusões e autoria. O paciente mantém
+o acesso à prescrição e aos registros após o fim do vínculo. Cada acesso
+ou mudança é auditado sem guardar o conteúdo da prescrição na auditoria.
+
+## Documentos privados e OCR
+
+| Endpoint | Entrada | Resposta |
+| --- | --- | --- |
+| `POST /documents` | Multipart com `title` e `file`, e `patient_id` para profissional | 201, documento com resultado da extração |
+| `GET /documents` | `patient_id` para profissional, `limit` e `cursor` opcionais | 200, `{items, next_cursor}` |
+| `GET /documents/{document_id}/download` | Sessão com acesso ao documento | 200, anexo original |
+| `POST /documents/{document_id}/verify` | Sessão com acesso, envia `{extracted_text}` revisado | 200, documento com texto verificado |
+| `POST /documents/{document_id}/access/{professional_id}` | Paciente dono concede acesso ao profissional do vínculo ativo | 204 |
+| `DELETE /documents/{document_id}/access/{professional_id}` | Paciente dono revoga a permissão do profissional | 204 |
+
+O paciente pode listar, baixar e revisar os documentos da própria conta.
+O profissional precisa de vínculo ativo e de permissão para cada documento.
+Um envio feito pelo profissional gera permissão para aquele vínculo. Quando
+o vínculo termina, as permissões dele deixam de valer. Um novo vínculo exige
+novas permissões, inclusive para o mesmo profissional.
+
+A API aceita PDF, JPEG, PNG e WebP de até 10 MiB. Ela verifica extensão,
+tipo declarado e assinatura e entrega os arquivos somente como anexos autenticados.
+`ocr_status` é `completed`, `failed` ou `unsupported`. Quando alguma página
+do PDF não tiver camada de texto, o documento exige transcrição manual. O usuário pode revisar uma
+extração ou enviar uma transcrição manual não vazia de até 20.000 caracteres.
+`is_verified` registra essa ação humana. O original e o resultado inicial da
+extração são preservados. Os eventos de auditoria não contêm arquivos nem texto clínico.
