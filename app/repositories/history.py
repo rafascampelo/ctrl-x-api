@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.clinical_record import ClinicalRecord
 from app.models.pain_entry import PainEntry
+from app.models.prescription import Prescription, PrescriptionCompletion
 from app.schemas.history import HistoryCategory
 
 
@@ -23,6 +24,11 @@ def events(
             ClinicalRecord.id, ClinicalRecord.finalized_at, HistoryCategory.CLINICAL_RECORD,
             "Prontuário clínico", literal(None), ClinicalRecord.pain_intensity, ClinicalRecord.body_region,
         ).where(ClinicalRecord.patient_id == patient_id, ClinicalRecord.status == "finalized"))
+    if category in (None, HistoryCategory.EXERCISE):
+        sources.append(project(
+            PrescriptionCompletion.id, PrescriptionCompletion.completed_at, HistoryCategory.EXERCISE,
+            "Exercício concluído", Prescription.title, literal(None), literal(None),
+        ).join(Prescription).where(Prescription.patient_id == patient_id))
     if not sources:
         return []
     history = union_all(*sources).subquery()

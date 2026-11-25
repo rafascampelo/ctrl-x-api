@@ -30,6 +30,7 @@ class CalendarDay(BaseModel):
     date: date
     pain_count: int
     clinical_record_count: int = 0
+    exercise_count: int = 0
 
 
 class PainMetrics(BaseModel):

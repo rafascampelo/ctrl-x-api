@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.repositories import care, history, pain
+from app.repositories import care, history, pain, prescription
 from app.repositories.auth import utc
 from app.schemas.history import HistoryCategory, HistoryEvent
 from app.services.pain import cursor_position, patient_owner
@@ -62,14 +62,21 @@ def calendar(db: Session, user: User, timezone: str, month: str):
         utc(timestamp).astimezone(zone).date()
         for timestamp in history.finalized_times(db, patient.id, start, end)
     )
+    exercise_days = Counter(
+        utc(timestamp).astimezone(zone).date()
+        for timestamp in prescription.completion_times(db, patient.id, start, end)
+    )
     care.audit(db, user, "calendar_viewed", patient.id, patient.id)
     db.commit()
     return {
         "month": month,
         "timezone": timezone,
         "days": [
-            {"date": day, "pain_count": days[day], "clinical_record_count": clinical_days[day]}
-            for day in sorted(days.keys() | clinical_days.keys())
+            {
+                "date": day, "pain_count": days[day], "clinical_record_count": clinical_days[day],
+                "exercise_count": exercise_days[day],
+            }
+            for day in sorted(days.keys() | clinical_days.keys() | exercise_days.keys())
         ],
         "pain": {
             "count": count,
