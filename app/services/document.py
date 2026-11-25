@@ -93,7 +93,8 @@ def upload(db: Session, user: User, fields: UploadFields, data: bytes,
         row = PrivateDocument(
             patient_id=patient_id, uploaded_by=user.id, storage_key=storage_key,
             title=fields.title, file_name=filename, content_type=mime, size_bytes=len(data),
-            ocr_status=status, raw_text=text, ocr_error=error, created_at=datetime.now(UTC),
+            ocr_status=status, raw_text=text, ocr_error=error,
+            created_at=datetime.now(UTC).replace(microsecond=0),
         )
         db.add(row)
         db.flush()
@@ -137,7 +138,7 @@ def review(db: Session, user: User, document_id: str, data: DocumentReview):
     row = authorized_document(db, user, document_id)
     row.reviewed_text = data.extracted_text
     row.reviewed_by = user.id
-    row.verified_at = datetime.now(UTC)
+    row.verified_at = datetime.now(UTC).replace(microsecond=0)
     return save(db, user, row, "ocr_reviewed")
 
 
