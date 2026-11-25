@@ -214,3 +214,28 @@ registra o momento UTC da requisição. As listagens aceitam `limit` e
 `cursor` e incluem exercícios, conclusões e autoria. O paciente mantém
 o acesso à prescrição e aos registros após o fim do vínculo. Cada acesso
 ou mudança é auditado sem guardar o conteúdo da prescrição na auditoria.
+
+## Documentos privados e OCR
+
+| Endpoint | Entrada | Resposta |
+| --- | --- | --- |
+| `POST /documents` | Multipart com `title` e `file`, e `patient_id` para profissional | 201, documento com resultado da extração |
+| `GET /documents` | `patient_id` para profissional, `limit` e `cursor` opcionais | 200, `{items, next_cursor}` |
+| `GET /documents/{document_id}/download` | Sessão com acesso ao documento | 200, anexo original |
+| `POST /documents/{document_id}/verify` | Sessão com acesso, envia `{extracted_text}` revisado | 200, documento com texto verificado |
+| `POST /documents/{document_id}/access/{professional_id}` | Paciente dono concede acesso ao profissional do vínculo ativo | 204 |
+| `DELETE /documents/{document_id}/access/{professional_id}` | Paciente dono revoga a permissão do profissional | 204 |
+
+O paciente pode listar, baixar e revisar os documentos da própria conta.
+O profissional precisa de vínculo ativo e de permissão para cada documento.
+Um envio feito pelo profissional gera permissão para aquele vínculo. Quando
+o vínculo termina, as permissões dele deixam de valer. Um novo vínculo exige
+novas permissões, inclusive para o mesmo profissional.
+
+A API aceita PDF, JPEG, PNG e WebP de até 10 MiB. Ela verifica extensão,
+tipo declarado e assinatura e entrega os arquivos somente como anexos autenticados.
+`ocr_status` é `completed`, `failed` ou `unsupported`. Quando alguma página
+do PDF não tiver camada de texto, o documento exige transcrição manual. O usuário pode revisar uma
+extração ou enviar uma transcrição manual não vazia de até 20.000 caracteres.
+`is_verified` registra essa ação humana. O original e o resultado inicial da
+extração são preservados. Os eventos de auditoria não contêm arquivos nem texto clínico.
