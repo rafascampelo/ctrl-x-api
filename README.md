@@ -154,7 +154,11 @@ As migrações agora estão inicializadas; defina `DATABASE_URL` antes de execut
 
 O desenho inicial está em [docs/architecture.md](docs/architecture.md) e
 [docs/api-design.md](docs/api-design.md). As pastas por camada estão reservadas;
-a API implementa `/health` e autenticação. O Alembic mantém migrations
+a API oferece `/health` para liveness e `/health/db` para verificar se
+consegue executar `SELECT 1` no banco configurado. `/health/db` retorna 200
+quando a consulta funciona e 503 quando o banco está indisponível, sem
+expor detalhes de conexão. A verificação de versão do schema continua sob
+responsabilidade dos comandos de migrations. O Alembic mantém migrations
 versionadas e a CI valida upgrade, drift e downgrade em MySQL 8.4 isolado.
 
 Alternativa de preparação com uv (sem ativar o ambiente):
