@@ -14,6 +14,7 @@ from app.models.auth import AuthEvent, AuthSession, LoginLimit
 from app.models.clinical_record import ClinicalRecord, ClinicalRecordAmendment
 from app.models.crefito_review import CrefitoReview
 from app.models.pain_entry import PainEntry
+from app.models.prescription import PrescribedExercise, Prescription, PrescriptionCompletion
 from app.models.professional_link import CareAuditEvent, ProfessionalLink
 from app.models.user import Patient, Professional, User
 from scripts.ci_database import validate_ci_database
@@ -44,7 +45,8 @@ def client(monkeypatch):
         yield test_client
     app.dependency_overrides.clear()
     with Session(engine) as db:
-        for model in (ClinicalRecordAmendment, ClinicalRecord, CareAuditEvent, PainEntry,
+        for model in (PrescribedExercise, PrescriptionCompletion, Prescription,
+                      ClinicalRecordAmendment, ClinicalRecord, CareAuditEvent, PainEntry,
                       ProfessionalLink, AuthEvent, AuthSession, LoginLimit,
                       Patient, CrefitoReview, Professional, User):
             db.execute(delete(model))

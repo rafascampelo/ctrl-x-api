@@ -8,6 +8,7 @@ from app.api.v1.endpoints.care import router as care_router
 from app.api.v1.endpoints.clinical_record import router as clinical_record_router
 from app.api.v1.endpoints.history import router as history_router
 from app.api.v1.endpoints.pain import router as pain_router
+from app.api.v1.endpoints.prescription import router as prescription_router
 from app.core.config import CorsSettings
 from app.core.security import SESSION_REMAINING_HEADER
 from app.db.session import database_ready
@@ -23,6 +24,7 @@ app.include_router(care_router, prefix="/api/v1")
 app.include_router(clinical_record_router, prefix="/api/v1")
 app.include_router(history_router, prefix="/api/v1")
 app.include_router(pain_router, prefix="/api/v1")
+app.include_router(prescription_router, prefix="/api/v1")
 
 
 @app.exception_handler(RequestValidationError)
