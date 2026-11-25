@@ -159,11 +159,13 @@ local e terminam antes da meia-noite seguinte ao período solicitado. Quando
 omitido, `timezone` usa UTC. O frontend usa o fuso do navegador. Cada evento
 de dor usa o UUID, a região, a intensidade e o instante UTC da entrada do
 diário. O cursor é opaco e deve ser reenviado com o mesmo filtro. As
-categorias `exercise` e `clinical_record` retornam lista vazia até que
-essas fontes sejam integradas.
+categoria `clinical_record` projeta prontuários finalizados pela data de
+finalização. O evento inclui região e intensidade quando informada. A
+categoria `exercise` está reservada para a integração das prescrições.
 
 O calendário retorna apenas datas com registros, com `date` e
-`pain_count`. O dashboard usa `pain.count`, `pain.average_intensity` e
+`pain_count` e inclui `clinical_record_count` nos dias com finalizações.
+O dashboard usa `pain.count`, `pain.average_intensity` e
 `pain.latest_intensity` do mesmo mês. Em meses sem registros, a média e a
 última intensidade são nulas. Uma intensidade registrada de zero é válida.
 
@@ -171,11 +173,26 @@ A migration `0007_pain_entries` cria a entidade e um índice por paciente/data/I
 sem tabelas adicionais de timeline ou calendário. `care_audit_events` registra
 `pain_entry_created`, `pain_entries_viewed`, `pain_entry_updated` e
 `pain_entry_deleted`, contendo somente ator, paciente, recurso, ação e instante.
-Frontend não faz parte desta entrega.
 
-## Próximos incrementos P0
+## Prontuários digitais
 
-Prontuários nativos com finalização e adendos e timeline
-longitudinal ainda dependem de implementação. As rotas propostas estão em
-`api-design.md`. A existência de vínculo profissional não concede acesso
-automático a documentos.
+| Endpoint | Permissão | Resposta |
+| --- | --- | --- |
+| `POST /clinical-records` | Profissional com vínculo ativo, informa `patient_id` e campos clínicos | 201, rascunho |
+| `GET /clinical-records` | Paciente da sessão, ou profissional com vínculo ativo e filtro `patient_id` | 200, `{items, next_cursor}` |
+| `GET /clinical-records/{record_id}` | Paciente dono ou profissional com vínculo ativo, respeitando a visibilidade do rascunho | 200, prontuário com adendos |
+| `PATCH /clinical-records/{record_id}` | Profissional autor com vínculo ativo, envia campos clínicos a atualizar | 200, rascunho atualizado |
+| `POST /clinical-records/{record_id}/finalize` | Profissional autor com vínculo ativo | 200, prontuário finalizado |
+| `POST /clinical-records/{record_id}/amendments` | Profissional com vínculo ativo, envia `{reason, content}` | 201, adendo |
+
+A listagem aceita `limit` e `cursor`. Os campos clínicos são
+`chief_complaint`, `anamnesis`, `physical_assessment`, `body_region`,
+`pain_intensity` (opcional, inteiro de 0 a 10), `functional_limitations`,
+`therapeutic_goals`, `care_plan` e `notes` (opcional).
+
+Rascunhos ficam visíveis ao autor enquanto houver vínculo ativo. O paciente
+mantém acesso aos próprios registros finalizados após a revogação. O
+profissional do vínculo atual pode acrescentar um adendo, que tem autoria
+própria. O conteúdo finalizado permanece imutável e uma tentativa de
+alterá-lo pelo autor retorna 409. A API audita leitura, criação, edição,
+finalização e adendos sem guardar conteúdo clínico na auditoria.

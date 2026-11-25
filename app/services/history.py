@@ -6,10 +6,10 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.repositories import care, pain
+from app.repositories import care, history, pain
 from app.repositories.auth import utc
 from app.schemas.history import HistoryCategory, HistoryEvent
-from app.services.pain import list_own_entries, patient_owner
+from app.services.pain import cursor_position, patient_owner
 
 
 def local_period(timezone: str, month: str | None, day: str | None):
@@ -37,22 +37,13 @@ def local_period(timezone: str, month: str | None, day: str | None):
 def timeline(db: Session, user: User, timezone: str, month: str | None, day: str | None,
              category: HistoryCategory | None, cursor: str | None, limit: int):
     _, start, end = local_period(timezone, month, day)
-    # Additional categories can supply their own projected events when their sources exist.
-    if category not in (None, HistoryCategory.PAIN) or (start is not None and start == end):
-        patient = patient_owner(db, user)
-        care.audit(db, user, "history_viewed", patient.id, patient.id)
-        db.commit()
-        return {"items": [], "next_cursor": None}
-    page = list_own_entries(db, user, start, end, cursor, limit)
-    return {
-        "items": [
-            HistoryEvent(id=entry.id, category=HistoryCategory.PAIN, title="Registro de dor",
-                         summary=entry.description, occurred_at=utc(entry.occurred_at),
-                         intensity=entry.intensity, region=entry.region)
-            for entry in page["items"]
-        ],
-        "next_cursor": page["next_cursor"],
-    }
+    patient = patient_owner(db, user)
+    rows = history.events(db, patient.id, category, start, end, cursor_position(cursor), limit)
+    items = [HistoryEvent(**{**row, "occurred_at": utc(row["occurred_at"])}) for row in rows[:limit]]
+    next_cursor = f"{items[-1].occurred_at.isoformat()}|{items[-1].id}" if len(rows) > limit else None
+    care.audit(db, user, "history_viewed", patient.id, patient.id)
+    db.commit()
+    return {"items": items, "next_cursor": next_cursor}
 
 
 def calendar(db: Session, user: User, timezone: str, month: str):
@@ -67,12 +58,19 @@ def calendar(db: Session, user: User, timezone: str, month: str):
         if latest_intensity is None:
             latest_intensity = intensity
     count = sum(days.values())
+    clinical_days = Counter(
+        utc(timestamp).astimezone(zone).date()
+        for timestamp in history.finalized_times(db, patient.id, start, end)
+    )
     care.audit(db, user, "calendar_viewed", patient.id, patient.id)
     db.commit()
     return {
         "month": month,
         "timezone": timezone,
-        "days": [{"date": day, "pain_count": days[day]} for day in sorted(days)],
+        "days": [
+            {"date": day, "pain_count": days[day], "clinical_record_count": clinical_days[day]}
+            for day in sorted(days.keys() | clinical_days.keys())
+        ],
         "pain": {
             "count": count,
             "average_intensity": round(total_intensity / count, 1) if count else None,

@@ -30,7 +30,7 @@ def timeline(response: Response, user: PatientUser, db: Database,
     return service.timeline(db, user, timezone, month, date, category, cursor, limit)
 
 
-@router.get("/me/calendar", response_model=CalendarMonth)
+@router.get("/me/calendar", response_model=CalendarMonth, response_model_exclude_defaults=True)
 def calendar(response: Response, user: PatientUser, db: Database,
              month: Month, timezone: Timezone = "UTC"):
     response.headers["Cache-Control"] = "no-store"
